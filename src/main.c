@@ -1,6 +1,7 @@
 
 #include <stdio.h>
 #include "cli.h"
+#include "wmod.h"
 
 int main(int argc, char *argv[]) {
     CliArgs args;
@@ -13,6 +14,13 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Loading wasm module at %s\n", args.path);
+    WasmModule wmod;
+    int wmod_err = wmod_read(&wmod, args.path);
+
+    if (wmod_err != 0) {
+        printf("Failed to load wasm module at %s: %s\n", args.path, wmod_str_error(wmod_err));
+        return 2;
+    }
 
     return 0;
 }
