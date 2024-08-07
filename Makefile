@@ -1,9 +1,12 @@
 
-build:
-	clang src/main.c -o target/semblance
+target/semblance: target/cli.o
+	clang src/main.c target/cli.o -o target/semblance
 
-run: build
-	./target/semblance
+target/cli.o: src/cli.c src/cli.h
+	clang -c src/cli.c -o target/cli.o
+
+run: target/semblance
+	./target/semblance wasm/two.wasm
 
 clean:
 	rm -rf target/*
