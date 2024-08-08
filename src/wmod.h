@@ -2,7 +2,6 @@
 #include <sys/types.h>
 
 typedef struct {
-    int fd;
     off_t size;
     void *data;
 } WasmModule;

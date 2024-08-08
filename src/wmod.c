@@ -28,7 +28,6 @@ WmodErr wmod_err_ok() {
 WmodErr wmod_read(WasmModule *wmod, char *path) {
     int fd = open(path, O_RDONLY);
     if (fd < 0) return wmod_mk_err(WMOD_ERR_IO, errno);
-    wmod->fd = fd;
 
     struct stat stats;
     int stat_err = fstat(fd, &stats);
@@ -37,8 +36,10 @@ WmodErr wmod_read(WasmModule *wmod, char *path) {
 
     void* data = mmap(NULL, stats.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if ((size_t) data == -1) return wmod_mk_err(WMOD_ERR_IO, errno);
-
     wmod->data = data;
+
+    int close_err = close(fd);
+    if (close_err != 0) return wmod_mk_err(WMOD_ERR_IO, errno);
 
     return wmod_err_ok();
 }
