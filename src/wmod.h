@@ -2,8 +2,14 @@
 #include <sys/types.h>
 
 typedef struct {
+    char magic_bytes[4];
+    u_int32_t version;
+    u_int8_t sections[];
+} WasmHeader;
+
+typedef struct {
     off_t size;
-    void *data;
+    WasmHeader *data;
 } WasmModule;
 
 typedef struct {

@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <sys/_types/_u_int32_t.h>
 #include "cli.h"
 #include "wmod.h"
 
@@ -18,18 +19,24 @@ int main(int argc, char *argv[]) {
 
     if (wmod_failed(wmod_err)) {
         printf(
-            "Failed to load wasm module at %s: %s (%s)\n",
+            "Failed to load wasm module at %s: %s",
             args.path,
-            wmod_str_error(wmod_err),
-            wmod_str_error_cause(wmod_err)
+            wmod_str_error(wmod_err)
         );
+        if (wmod_err.cause) {
+            printf(" (%s)", wmod_str_error_cause(wmod_err));
+        }
+        printf("\n");
         return 2;
     }
 
     printf("%s has %lld bytes\n", args.path, wmod.size);
 
-    char *magic = wmod.data;
+    char *magic = wmod.data->magic_bytes;
     printf("magic bytes: \"%c%c%c%c\"\n", magic[0], magic[1], magic[2], magic[3]);
+
+    u_int32_t version = wmod.data->version;
+    printf("version: %d\n", version);
 
     return 0;
 }
