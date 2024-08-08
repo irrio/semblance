@@ -13,14 +13,23 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Loading wasm module at %s\n", args.path);
     WasmModule wmod;
-    int wmod_err = wmod_read(&wmod, args.path);
+    WmodErr wmod_err = wmod_read(&wmod, args.path);
 
-    if (wmod_err != 0) {
-        printf("Failed to load wasm module at %s: %s\n", args.path, wmod_str_error(wmod_err));
+    if (wmod_failed(wmod_err)) {
+        printf(
+            "Failed to load wasm module at %s: %s (%s)\n",
+            args.path,
+            wmod_str_error(wmod_err),
+            wmod_str_error_cause(wmod_err)
+        );
         return 2;
     }
+
+    printf("%s has %lld bytes\n", args.path, wmod.size);
+
+    char *magic = wmod.data;
+    printf("magic bytes: \"%c%c%c%c\"\n", magic[0], magic[1], magic[2], magic[3]);
 
     return 0;
 }
