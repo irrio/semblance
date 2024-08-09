@@ -3,62 +3,94 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
-const int WMOD_ERR_IO = 1;
-const int WMOD_ERR_MAGIC_BYTES = 2;
-const int WMOD_ERR_UNSUPPORTED_VERSION = 3;
+const int WMOD_ERR_IO                   = 1;
+const int WMOD_ERR_MAGIC_BYTES          = 2;
+const int WMOD_ERR_UNSUPPORTED_VERSION  = 3;
+const int WMOD_ERR_OOM                  = 4;
 
-WmodErr wmod_mk_err(int wmod_err, int cause) {
-    WmodErr out;
-    out.wmod_err = wmod_err;
-    out.cause = cause;
-    return out;
+const u_int8_t WMOD_SECTION_ID_CUSTOM       = 0;
+const u_int8_t WMOD_SECTION_ID_TYPE         = 1;
+const u_int8_t WMOD_SECTION_ID_IMPORT       = 2;
+const u_int8_t WMOD_SECTION_ID_FUNCTION     = 3;
+const u_int8_t WMOD_SECTION_ID_TABLE        = 4;
+const u_int8_t WMOD_SECTION_ID_MEMORY       = 5;
+const u_int8_t WMOD_SECTION_ID_GLOBAL       = 6;
+const u_int8_t WMOD_SECTION_ID_EXPORT       = 7;
+const u_int8_t WMOD_SECTION_ID_START        = 8;
+const u_int8_t WMOD_SECTION_ID_ELEMENT      = 9;
+const u_int8_t WMOD_SECTION_ID_CODE         = 10;
+const u_int8_t WMOD_SECTION_ID_DATA         = 11;
+const u_int8_t WMOD_SECTION_ID_DATA_COUNT   = 12;
+
+WasmModule *wmod_mk_err(WmodErr *err, int error_code, int cause) {
+    err->wmod_err = error_code;
+    err->cause = cause;
+    return (WasmModule*) -1;
 }
 
-WmodErr wmod_err_ok() {
-    WmodErr out;
-    out.wmod_err = 0;
-    out.cause = 0;
-    return out;
+WasmModule *wmod_err_ok(WasmModule *wmod, WmodErr *err) {
+    err->wmod_err = 0;
+    err->cause = 0;
+    return wmod;
 }
 
-WmodErr wmod_validate(off_t size, WasmHeader *header) {
-    if (size < sizeof(WasmHeader)) return wmod_mk_err(WMOD_ERR_MAGIC_BYTES, 0);
+size_t wmod_count_sections(off_t size, WasmSectionHeader *section) {
+    size_t count = 0;
+    while (size > 0) {
+        count++;
+        printf("id: %d, size: %d\n", section->section_id, section->size);
+        size -= section->size;
+        section = (WasmSectionHeader*) section->data + section->size;
+    }
+    return count;
+}
+
+WasmModule *wmod_validate(off_t size, WasmHeader *header, WmodErr *err) {
+    if (size < sizeof(WasmHeader)) return wmod_mk_err(err, WMOD_ERR_MAGIC_BYTES, 0);
 
     if (
         header->magic_bytes[0] != '\0'
         || header->magic_bytes[1] != 'a'
         || header->magic_bytes[2] != 's'
         || header->magic_bytes[3] != 'm'
-    ) return wmod_mk_err(WMOD_ERR_MAGIC_BYTES, 0);
+    ) return wmod_mk_err(err, WMOD_ERR_MAGIC_BYTES, 0);
 
-    if (header->version != 1) return wmod_mk_err(WMOD_ERR_UNSUPPORTED_VERSION, 0);
+    if (header->version != 1) return wmod_mk_err(err, WMOD_ERR_UNSUPPORTED_VERSION, 0);
 
-    return wmod_err_ok();
+    size_t num_sections = wmod_count_sections(size - sizeof(WasmHeader), header->sections);
+    WasmModule* out = malloc(sizeof(WasmModule) + (sizeof(WasmSection) * num_sections));
+
+    if (out == NULL) return wmod_mk_err(err, WMOD_ERR_OOM, 0);
+
+    out->total_size = size;
+    out->num_sections = num_sections;
+    out->raw_data = header;
+
+    return wmod_err_ok(out, err);
 }
 
-WmodErr wmod_read(WasmModule *wmod, char *path) {
+WasmModule *wmod_read(char *path, WmodErr *err) {
     int fd = open(path, O_RDONLY);
-    if (fd < 0) return wmod_mk_err(WMOD_ERR_IO, errno);
+    if (fd < 0) return wmod_mk_err(err, WMOD_ERR_IO, errno);
 
     struct stat stats;
     int stat_err = fstat(fd, &stats);
-    if (stat_err == -1) return wmod_mk_err(WMOD_ERR_IO, errno);
-    wmod->size = stats.st_size;
+    if (stat_err == -1) return wmod_mk_err(err, WMOD_ERR_IO, errno);
 
     WasmHeader* data = mmap(NULL, stats.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if ((size_t) data == -1) return wmod_mk_err(WMOD_ERR_IO, errno);
-    wmod->data = data;
+    if ((size_t) data == -1) return wmod_mk_err(err, WMOD_ERR_IO, errno);
 
     int close_err = close(fd);
-    if (close_err != 0) return wmod_mk_err(WMOD_ERR_IO, errno);
+    if (close_err != 0) return wmod_mk_err(err, WMOD_ERR_IO, errno);
 
-    return wmod_validate(stats.st_size, data);
+    return wmod_validate(stats.st_size, data, err);
 }
 
 int wmod_failed(WmodErr err) {
@@ -73,6 +105,8 @@ char *wmod_str_error(WmodErr err) {
             return "not a wasm module";
         case WMOD_ERR_UNSUPPORTED_VERSION:
             return "unsupported version";
+        case WMOD_ERR_OOM:
+            return "out of memory";
         default:
             return "unknown error";
     }

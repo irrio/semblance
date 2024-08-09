@@ -1,6 +1,6 @@
 
 #include <stdio.h>
-#include <sys/_types/_u_int32_t.h>
+#include <sys/types.h>
 #include "cli.h"
 #include "wmod.h"
 
@@ -14,8 +14,8 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    WasmModule wmod;
-    WmodErr wmod_err = wmod_read(&wmod, args.path);
+    WmodErr wmod_err;
+    WasmModule *wmod = wmod_read(args.path, &wmod_err);
 
     if (wmod_failed(wmod_err)) {
         printf(
@@ -30,13 +30,16 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
-    printf("%s has %lld bytes\n", args.path, wmod.size);
+    printf("%s has %lld bytes\n", args.path, wmod->total_size);
 
-    char *magic = wmod.data->magic_bytes;
+    char *magic = wmod->raw_data->magic_bytes;
     printf("magic bytes: \"%c%c%c%c\"\n", magic[0], magic[1], magic[2], magic[3]);
 
-    u_int32_t version = wmod.data->version;
+    u_int32_t version = wmod->raw_data->version;
     printf("version: %d\n", version);
+
+    size_t num_sections = wmod->num_sections;
+    printf("sections: %zu\n", num_sections);
 
     return 0;
 }
