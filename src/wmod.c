@@ -1,5 +1,6 @@
 
 #include "wmod.h"
+#include "leb128.h"
 #include <fcntl.h>
 #include <errno.h>
 #include <stdio.h>
@@ -44,10 +45,11 @@ WasmModule *wmod_err_ok(WasmModule *wmod, WmodErr *err) {
 size_t wmod_count_sections(off_t size, WasmSectionHeader *section) {
     size_t count = 0;
     while (size > 0) {
+        ULeb128Decode32Result decoded = u_leb128_decode_32(size, section->data);
+        if (decoded.data == NULL) break;
+        size -= (decoded.value + 1);
+        section = (WasmSectionHeader*) decoded.data + decoded.value;
         count++;
-        printf("id: %d, size: %d\n", section->section_id, section->size);
-        size -= section->size;
-        section = (WasmSectionHeader*) section->data + section->size;
     }
     return count;
 }

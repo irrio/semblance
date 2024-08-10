@@ -1,8 +1,8 @@
 
 #pragma once
 
-#include <sys/_types/_u_int32_t.h>
 #include <sys/types.h>
+#include "leb128.h"
 
 extern const u_int8_t WMOD_SECTION_ID_CUSTOM;
 extern const u_int8_t WMOD_SECTION_ID_TYPE;
@@ -20,8 +20,7 @@ extern const u_int8_t WMOD_SECTION_ID_DATA_COUNT;
 
 typedef struct __attribute__((packed)) {
     u_int8_t section_id;
-    u_int32_t size;
-    u_int8_t data[];
+    u_leb128_prefixed data;
 } WasmSectionHeader;
 
 typedef struct __attribute__((packed)) {
