@@ -1,7 +1,8 @@
 
 #pragma once
 
-#include <sys/types.h>
+#include <stdint.h>
+#include <stddef.h>
 
 typedef u_int8_t u_leb128_prefixed[];
 

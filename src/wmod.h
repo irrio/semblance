@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <sys/types.h>
+#include <stdint.h>
 
 typedef u_int8_t WasmTypes;
 typedef u_int8_t WasmFuncs;

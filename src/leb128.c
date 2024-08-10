@@ -1,7 +1,6 @@
 
 #include "leb128.h"
 #include <stdio.h>
-#include <sys/_types/_null.h>
 #include <sys/types.h>
 
 ULeb128Decode32Result u_leb128_decode_32(size_t len, u_leb128_prefixed data) {

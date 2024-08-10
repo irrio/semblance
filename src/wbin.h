@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <sys/types.h>
+#include <stdint.h>
 #include <stdbool.h>
 #include "leb128.h"
 #include "wmod.h"
