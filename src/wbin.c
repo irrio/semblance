@@ -62,6 +62,7 @@ WasmDecodeResult wbin_decode_module(size_t size, WasmHeader *header, WasmModule 
         || header->magic_bytes[3] != 'm'
     ) return wbin_err(WasmDecodeErrMagicBytes, 0);
 
+    wmod->meta.version = header->version;
     if (header->version != 1) return wbin_err(WasmDecodeErrUnsupportedVersion, 0);
 
     return wbin_ok();

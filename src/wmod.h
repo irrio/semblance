@@ -6,6 +6,22 @@
 #include "vec.h"
 
 typedef enum {
+    WasmNumI32,
+    WasmNumI64,
+    WasmNumF32,
+    WasmNumF64
+} WasmNumType;
+
+typedef enum {
+    WasmRefFunc,
+    WasmRefExtern
+} WasmRefType;
+
+typedef enum {
+    WasmVecV128
+} WasmVecType;
+
+typedef enum {
     WasmValueTypeNum,
     WasmValueTypeVec,
     WasmValueTypeRef
@@ -13,6 +29,11 @@ typedef enum {
 
 typedef struct {
     WasmValueTypeKind kind;
+    union {
+        WasmNumType num;
+        WasmVecType vec;
+        WasmRefType ref;
+    } value;
 } WasmValueType;
 
 typedef VEC(WasmValueType) WasmResultType;
@@ -35,6 +56,10 @@ typedef Vec WasmExports;
 typedef Vec WasmCustoms;
 
 typedef struct {
+    u_int32_t version;
+} WasmMeta;
+
+typedef struct {
     WasmTypes types;
     WasmFuncs funcs;
     WasmTables tables;
@@ -46,6 +71,8 @@ typedef struct {
     WasmImports imports;
     WasmExports exports;
     WasmCustoms customs;
+    WasmMeta meta;
 } WasmModule;
 
 void wmod_init(WasmModule *wmod);
+void wmod_dump(WasmModule *wmod);

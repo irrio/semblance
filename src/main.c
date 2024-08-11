@@ -39,5 +39,7 @@ int main(int argc, char *argv[]) {
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
 
+    wmod_dump(&wmod);
+
     return 0;
 }
