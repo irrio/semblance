@@ -3,8 +3,9 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "leb128.h"
 #include "wmod.h"
+
+typedef u_int8_t u_leb128_prefixed[];
 
 typedef enum __attribute__((packed)) {
     SectionIdCustom = 0,
@@ -36,18 +37,32 @@ typedef struct __attribute__((packed)) {
 } WasmHeader;
 
 typedef enum {
-    WasmDecodeOk= 0,
+    WasmDecodeOk,
+    WasmDecodeErr
+} WasmDecodeState;
+
+typedef enum {
     WasmDecodeErrIo,
     WasmDecodeErrMagicBytes,
     WasmDecodeErrUnsupportedVersion,
     WasmDecodeErrOom,
     WasmDecodeErrLeb128,
     WasmDecodeErrUnknownSectionId,
-} WasmDecodeState;
+    WasmDecodeErrInvalidType,
+    WasmDecodeErrUnknownValueType,
+} WasmDecodeErrorCode;
+
+typedef struct {
+    WasmDecodeErrorCode code;
+    int cause;
+} WasmDecodeError;
 
 typedef struct {
     WasmDecodeState state;
-    int cause;
+    union {
+        void *next_data;
+        WasmDecodeError error;
+    } value;
 } WasmDecodeResult;
 
 WasmDecodeResult wbin_read_module(char *path, WasmModule *wmod);

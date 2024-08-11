@@ -29,6 +29,6 @@ size_t vec_push_back(Vec *vec, size_t width, void *data) {
         vec->ptr = new_ptr;
         vec->cap = new_cap;
     }
-    memcpy(vec->ptr + vec->len, data, width);
+    memcpy(vec->ptr + (width * vec->len), data, width);
     return vec->len++;
 }

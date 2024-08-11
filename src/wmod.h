@@ -79,4 +79,8 @@ typedef struct {
 void wmod_init(WasmModule *wmod);
 void wmod_dump(WasmModule *wmod);
 
+void wmod_func_type_init(WasmFuncType *type);
+
+size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype);
+
 wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type);
