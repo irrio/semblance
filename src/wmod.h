@@ -2,18 +2,37 @@
 #pragma once
 
 #include <stdint.h>
+#include <stddef.h>
+#include "vec.h"
 
-typedef u_int8_t WasmTypes;
-typedef u_int8_t WasmFuncs;
-typedef u_int8_t WasmTables;
-typedef u_int8_t WasmMems;
-typedef u_int8_t WasmGlobals;
-typedef u_int8_t WasmElems;
-typedef u_int8_t WasmDatas;
-typedef u_int8_t WasmStart;
-typedef u_int8_t WasmImports;
-typedef u_int8_t WasmExports;
-typedef u_int8_t WasmCustoms;
+typedef enum {
+    WasmValueTypeNum,
+    WasmValueTypeVec,
+    WasmValueTypeRef
+} WasmValueTypeKind;
+
+typedef struct {
+    WasmValueTypeKind kind;
+} WasmValueType;
+
+typedef VEC(WasmValueType) WasmResultType;
+
+typedef struct {
+    WasmResultType input_type;
+    WasmResultType output_type;
+} WasmFuncType;
+
+typedef VEC(WasmFuncType) WasmTypes;
+typedef Vec WasmFuncs;
+typedef Vec WasmTables;
+typedef Vec WasmMems;
+typedef Vec WasmGlobals;
+typedef Vec WasmElems;
+typedef Vec WasmDatas;
+typedef Vec WasmStart;
+typedef Vec WasmImports;
+typedef Vec WasmExports;
+typedef Vec WasmCustoms;
 
 typedef struct {
     WasmTypes types;
@@ -28,3 +47,5 @@ typedef struct {
     WasmExports exports;
     WasmCustoms customs;
 } WasmModule;
+
+void wmod_init(WasmModule *wmod);
