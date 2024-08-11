@@ -30,5 +30,5 @@ size_t vec_push_back(Vec *vec, size_t width, void *data) {
         vec->cap = new_cap;
     }
     memcpy(vec->ptr + vec->len, data, width);
-    return ++vec->len;
+    return vec->len++;
 }

@@ -22,3 +22,7 @@ void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("types: %zu\n", wmod->types.len);
 }
+
+wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type) {
+    return vec_push_back(&wmod->types, sizeof(WasmFuncType), type);
+}

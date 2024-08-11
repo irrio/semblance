@@ -44,6 +44,8 @@ typedef struct {
 } WasmFuncType;
 
 typedef VEC(WasmFuncType) WasmTypes;
+typedef size_t wasm_type_idx_t;
+
 typedef Vec WasmFuncs;
 typedef Vec WasmTables;
 typedef Vec WasmMems;
@@ -76,3 +78,5 @@ typedef struct {
 
 void wmod_init(WasmModule *wmod);
 void wmod_dump(WasmModule *wmod);
+
+wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type);

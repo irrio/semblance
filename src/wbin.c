@@ -1,8 +1,10 @@
 
 #include "wbin.h"
+#include "leb128.h"
 #include "wmod.h"
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
@@ -24,16 +26,45 @@ WasmDecodeResult wbin_ok() {
     return wbin_err(WasmDecodeOk, 0);
 }
 
-size_t wmod_count_sections(off_t size, WasmSectionHeader *section) {
-    size_t count = 0;
+WasmDecodeResult wbin_decode_types(u_leb128_prefixed section, WasmModule *wmod) {
+    ULeb128Decode32Result decoded = u_leb128_decode_32(section);
+    printf("num types in section: %d\n", decoded.value);
+    return wbin_ok();
+}
+
+WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
+    printf("section_id: %d\n", id);
+    switch (id) {
+        case SectionIdType:
+            return wbin_decode_types(section, wmod);
+        case SectionIdCustom:
+        case SectionIdImport:
+        case SectionIdFunction:
+        case SectionIdTable:
+        case SectionIdMemory:
+        case SectionIdGlobal:
+        case SectionIdExport:
+        case SectionIdStart:
+        case SectionIdElement:
+        case SectionIdCode:
+        case SectionIdData:
+        case SectionIdDataCount:
+            return wbin_ok();
+        default:
+            return wbin_err(WasmDecodeErrUnknownSectionId, id);
+    }
+}
+
+WasmDecodeResult wbin_decode_sections(off_t size, WasmSectionHeader *section, WasmModule *wmod) {
     while (size > 0) {
-        ULeb128Decode32Result decoded = u_leb128_decode_32(size, section->data);
-        if (decoded.data == NULL) break;
+        ULeb128Decode32Result decoded = u_leb128_decode_32(section->data);
+        if (decoded.data == NULL) return wbin_err(WasmDecodeErrLeb128, 0);
+        WasmDecodeResult sec_result = wbin_decode_section(section->section_id, decoded.data, wmod);
+        if (!wbin_is_ok(sec_result)) return sec_result;
         size -= (decoded.value + 1);
         section = (WasmSectionHeader*) decoded.data + decoded.value;
-        count++;
     }
-    return count;
+    return wbin_ok();
 }
 
 WasmDecodeResult wbin_read_module(char *path, WasmModule *wmod) {
@@ -65,7 +96,7 @@ WasmDecodeResult wbin_decode_module(size_t size, WasmHeader *header, WasmModule 
     wmod->meta.version = header->version;
     if (header->version != 1) return wbin_err(WasmDecodeErrUnsupportedVersion, 0);
 
-    return wbin_ok();
+    return wbin_decode_sections(size - sizeof(WasmHeader), header->sections, wmod);
 }
 
 char *wbin_explain_error_code(WasmDecodeResult result) {
@@ -80,6 +111,10 @@ char *wbin_explain_error_code(WasmDecodeResult result) {
             return "unsupported version";
         case WasmDecodeErrOom:
             return "out of memory";
+        case WasmDecodeErrLeb128:
+            return "invalid numeric";
+        case WasmDecodeErrUnknownSectionId:
+            return "unknown section id";
         default:
             return "unknown state";
     }

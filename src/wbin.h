@@ -41,6 +41,8 @@ typedef enum {
     WasmDecodeErrMagicBytes,
     WasmDecodeErrUnsupportedVersion,
     WasmDecodeErrOom,
+    WasmDecodeErrLeb128,
+    WasmDecodeErrUnknownSectionId,
 } WasmDecodeState;
 
 typedef struct {
