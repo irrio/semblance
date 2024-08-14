@@ -107,6 +107,15 @@ void wmod_dump_tables(WasmTables *tables) {
     }
 }
 
+void wmod_dump_mems(WasmMems *mems) {
+    WasmMemType *data = mems->ptr;
+    for (size_t i = 0; i < mems->len; i++) {
+        printf("<m%zu>: ", i);
+        wmod_dump_limits(&data[i].limits);
+        printf("\n");
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
@@ -115,6 +124,8 @@ void wmod_dump(WasmModule *wmod) {
     wmod_dump_funcs(&wmod->funcs);
     printf("-------tables: %zu-------\n", wmod->tables.len);
     wmod_dump_tables(&wmod->tables);
+    printf("-------mems: %zu-------\n", wmod->mems.len);
+    wmod_dump_mems(&wmod->mems);
 }
 
 void wmod_func_type_init(WasmFuncType *type) {
@@ -142,4 +153,8 @@ wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func) {
 
 wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table) {
     return vec_push_back(&wmod->tables, sizeof(WasmTable), table);
+}
+
+wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem) {
+    return vec_push_back(&wmod->mems, sizeof(WasmMemType), mem);
 }

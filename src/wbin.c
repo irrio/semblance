@@ -193,6 +193,25 @@ WasmDecodeResult wbin_decode_tables(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_mem(void* data, WasmMemType *mem) {
+    return wbin_decode_limits(data, &mem->limits);
+}
+
+WasmDecodeResult wbin_decode_mems(void* data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len > 0) {
+        WasmMemType mem = { 0 };
+        WasmDecodeResult result = wbin_decode_mem(data, &mem);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        wmod_push_back_mem(wmod, &mem);
+        len--;
+    }
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     printf("section_id: %d\n", id);
     switch (id) {
@@ -202,9 +221,10 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_funcs(section, wmod);
         case SectionIdTable:
             return wbin_decode_tables(section, wmod);
+        case SectionIdMemory:
+            return wbin_decode_mems(section, wmod);
         case SectionIdCustom:
         case SectionIdImport:
-        case SectionIdMemory:
         case SectionIdGlobal:
         case SectionIdExport:
         case SectionIdStart:

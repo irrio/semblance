@@ -78,7 +78,13 @@ typedef struct {
 typedef VEC(WasmTable) WasmTables;
 typedef u_int32_t wasm_table_idx_t;
 
-typedef Vec WasmMems;
+typedef struct {
+    WasmLimits limits;
+} WasmMemType;
+
+typedef VEC(WasmMemType) WasmMems;
+typedef u_int32_t wasm_mem_idx_t;
+
 typedef Vec WasmGlobals;
 typedef Vec WasmElems;
 typedef Vec WasmDatas;
@@ -117,3 +123,4 @@ size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype);
 wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type);
 wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func);
 wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table);
+wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem);
