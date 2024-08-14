@@ -15,7 +15,7 @@ target/vec.o: src/vec.c src/vec.h
 	clang -c src/vec.c -o target/vec.o
 
 run: target/semblance
-	./target/semblance wasm/two.wasm
+	./target/semblance wasm/table.wasm
 
 clean:
 	rm -rf target/*

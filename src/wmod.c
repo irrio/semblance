@@ -90,12 +90,31 @@ void wmod_dump_funcs(WasmFuncs *funcs) {
     }
 }
 
+void wmod_dump_limits(WasmLimits *limits) {
+    printf("[%d", limits->min);
+    if (limits->bounded) {
+        printf(", %d", limits->max);
+    }
+    printf("]");
+}
+
+void wmod_dump_tables(WasmTables *tables) {
+    WasmTable *data = tables->ptr;
+    for (size_t i = 0; i < tables->len; i++) {
+        printf("<tb%zu>: ", i);
+        wmod_dump_limits(&data[i].limits);
+        printf(" %s\n", wmod_str_ref_type(data[i].reftype));
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
     wmod_dump_types(&wmod->types);
     printf("-------funcs: %zu-------\n", wmod->funcs.len);
     wmod_dump_funcs(&wmod->funcs);
+    printf("-------tables: %zu-------\n", wmod->tables.len);
+    wmod_dump_tables(&wmod->tables);
 }
 
 void wmod_func_type_init(WasmFuncType *type) {
@@ -119,4 +138,8 @@ wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type) {
 
 wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func) {
     return vec_push_back(&wmod->funcs, sizeof(WasmFunc), func);
+}
+
+wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table) {
+    return vec_push_back(&wmod->tables, sizeof(WasmTable), table);
 }

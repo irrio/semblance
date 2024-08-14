@@ -3,7 +3,14 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 #include "vec.h"
+
+typedef struct {
+    u_int32_t min;
+    bool bounded;
+    u_int32_t max;
+} WasmLimits;
 
 typedef enum {
     WasmNumI32,
@@ -63,7 +70,14 @@ typedef struct {
 typedef VEC(WasmFunc) WasmFuncs;
 typedef u_int32_t wasm_func_idx_t;
 
-typedef Vec WasmTables;
+typedef struct {
+    WasmLimits limits;
+    WasmRefType reftype;
+} WasmTable;
+
+typedef VEC(WasmTable) WasmTables;
+typedef u_int32_t wasm_table_idx_t;
+
 typedef Vec WasmMems;
 typedef Vec WasmGlobals;
 typedef Vec WasmElems;
@@ -102,3 +116,4 @@ size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype);
 
 wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type);
 wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func);
+wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table);

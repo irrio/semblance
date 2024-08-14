@@ -50,6 +50,7 @@ typedef enum {
     WasmDecodeErrUnknownSectionId,
     WasmDecodeErrInvalidType,
     WasmDecodeErrUnknownValueType,
+    WasmDecodeErrInvalidLimit,
 } WasmDecodeErrorCode;
 
 typedef struct {

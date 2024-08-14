@@ -32,6 +32,7 @@ WasmDecodeResult wbin_ok(void *next_data) {
 void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
     u_int32_t shift = 0;
     size_t byte_idx = 0;
+    *out = 0;
     while (true) {
         u_int8_t byte = data[byte_idx];
         *out |= (byte & ~(1 << 7)) << shift;
@@ -42,6 +43,21 @@ void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
         byte_idx++;
     }
     return data + byte_idx + 1;
+}
+
+WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
+    u_int8_t *bytes = data;
+    switch (bytes[0]) {
+        case 0x70:
+            *out = WasmRefFunc;
+            break;
+        case 0x6F:
+            *out = WasmRefExtern;
+            break;
+        default:
+            return wbin_err(WasmDecodeErrInvalidType, 0);
+    }
+    return wbin_ok(bytes + 1);
 }
 
 WasmDecodeResult wbin_decode_val_type(void *data, WasmValueType *out) {
@@ -97,7 +113,6 @@ WasmDecodeResult wbin_decode_result_type(void *data, WasmResultType *out) {
 
 WasmDecodeResult wbin_decode_type(void *data, WasmFuncType *out) {
     u_int8_t *bytes = data;
-    printf("decoding type %x\n", bytes[0]);
     if (*bytes != 0x60) return wbin_err(WasmDecodeErrInvalidType, 0);
     WasmDecodeResult input_result = wbin_decode_result_type(&bytes[1], &out->input_type);
     if (!wbin_is_ok(input_result)) return input_result;
@@ -107,7 +122,6 @@ WasmDecodeResult wbin_decode_type(void *data, WasmFuncType *out) {
 WasmDecodeResult wbin_decode_types(void *data, WasmModule *wmod) {
     u_int32_t len = 0;
     data = wbin_decode_leb128(data, &len);
-    printf("num types in section: %d\n", len);
 
     while (len > 0) {
         WasmFuncType decoded_type;
@@ -137,6 +151,48 @@ WasmDecodeResult wbin_decode_funcs(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_limits(void *data, WasmLimits *limits) {
+    u_int8_t *bytes = data;
+    switch (bytes[0]) {
+        case 0x00:
+            limits->bounded = false;
+            break;
+        case 0x01:
+            limits->bounded = true;
+            break;
+        default:
+            return wbin_err(WasmDecodeErrInvalidLimit, 0);
+    }
+    data = wbin_decode_leb128(bytes + 1, &limits->min);
+    if (limits->bounded) {
+        data = wbin_decode_leb128(data, &limits->max);
+    }
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_table(void *data, WasmTable *table) {
+    WasmDecodeResult ref_result = wbin_decode_reftype(data, &table->reftype);
+    if (!wbin_is_ok(ref_result)) return ref_result;
+    data = ref_result.value.next_data;
+    return wbin_decode_limits(data, &table->limits);
+}
+
+WasmDecodeResult wbin_decode_tables(void *data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len > 0) {
+        WasmTable decoded_table = { 0 };
+        WasmDecodeResult result = wbin_decode_table(data, &decoded_table);
+        if (!wbin_is_ok(result)) return result;
+        wmod_push_back_table(wmod, &decoded_table);
+        data = result.value.next_data;
+        len--;
+    }
+
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     printf("section_id: %d\n", id);
     switch (id) {
@@ -144,9 +200,10 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_types(section, wmod);
         case SectionIdFunction:
             return wbin_decode_funcs(section, wmod);
+        case SectionIdTable:
+            return wbin_decode_tables(section, wmod);
         case SectionIdCustom:
         case SectionIdImport:
-        case SectionIdTable:
         case SectionIdMemory:
         case SectionIdGlobal:
         case SectionIdExport:
