@@ -74,7 +74,7 @@ void wmod_dump_result_type(WasmResultType *resulttype) {
 void wmod_dump_types(WasmTypes *types) {
     WasmFuncType *data = types->ptr;
     for (size_t i = 0; i < types->len; i++) {
-        printf("%zu: ", i);
+        printf("<t%zu>: ", i);
         wmod_dump_result_type(&data[i].input_type);
         printf(" -> ");
         wmod_dump_result_type(&data[i].output_type);
@@ -82,15 +82,31 @@ void wmod_dump_types(WasmTypes *types) {
     }
 }
 
+void wmod_dump_funcs(WasmFuncs *funcs) {
+    WasmFunc *data = funcs->ptr;
+    for (size_t i = 0; i < funcs->len; i++) {
+        printf("<f%zu>: ", i);
+        printf("<t%u>\n", data[i].type_idx);
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
     wmod_dump_types(&wmod->types);
+    printf("-------funcs: %zu-------\n", wmod->funcs.len);
+    wmod_dump_funcs(&wmod->funcs);
 }
 
 void wmod_func_type_init(WasmFuncType *type) {
     vec_init(&type->input_type);
     vec_init(&type->output_type);
+}
+
+void wmod_func_init(WasmFunc *func) {
+    func->type_idx = 0;
+    vec_init(&func->locals);
+    vec_init(&func->body);
 }
 
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype) {
@@ -99,4 +115,8 @@ size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype) 
 
 wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type) {
     return vec_push_back(&wmod->types, sizeof(WasmFuncType), type);
+}
+
+wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func) {
+    return vec_push_back(&wmod->funcs, sizeof(WasmFunc), func);
 }
