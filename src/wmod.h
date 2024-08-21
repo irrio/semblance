@@ -85,11 +85,50 @@ typedef struct {
 typedef VEC(WasmMemType) WasmMems;
 typedef u_int32_t wasm_mem_idx_t;
 
+typedef struct {
+    size_t len;
+    u_int8_t *bytes;
+} WasmName;
+
+typedef enum {
+    WasmGlobalVar,
+    WasmGlobalConst
+} WasmGlobalMutability;
+
+typedef struct {
+    WasmGlobalMutability mut;
+    WasmValueType valtype;
+} WasmGlobalType;
+
+typedef enum {
+    WasmImportFunc,
+    WasmImportTable,
+    WasmImportMem,
+    WasmImportGlobal
+} WasmImportKind;
+
+typedef struct {
+    WasmImportKind kind;
+    union {
+        wasm_type_idx_t func;
+        WasmTable table;
+        WasmMemType mem;
+        WasmGlobalType global;
+    } value;
+} WasmImportDesc;
+
+typedef struct {
+    WasmName module_name;
+    WasmName item_name;
+    WasmImportDesc desc;
+} WasmImport;
+
+typedef VEC(WasmImport) WasmImports;
+
 typedef Vec WasmGlobals;
 typedef Vec WasmElems;
 typedef Vec WasmDatas;
 typedef Vec WasmStart;
-typedef Vec WasmImports;
 typedef Vec WasmExports;
 typedef Vec WasmCustoms;
 
@@ -115,8 +154,10 @@ typedef struct {
 void wmod_init(WasmModule *wmod);
 void wmod_dump(WasmModule *wmod);
 
+void wmod_name_init(WasmName *name);
 void wmod_func_type_init(WasmFuncType *type);
 void wmod_func_init(WasmFunc *func);
+void wmod_import_init(WasmImport *import);
 
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype);
 
@@ -124,3 +165,4 @@ wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type);
 wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func);
 wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table);
 wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem);
+void wmod_push_back_import(WasmModule *wmod, WasmImport *import);

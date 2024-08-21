@@ -1,4 +1,5 @@
 (module $a.out
+  (import "console" "log" (func $log (param i32)))
   (type (;0;) (func))
   (type (;1;) (func (result i32)))
   (table $mytable 5 10 externref)

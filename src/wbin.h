@@ -51,6 +51,8 @@ typedef enum {
     WasmDecodeErrInvalidType,
     WasmDecodeErrUnknownValueType,
     WasmDecodeErrInvalidLimit,
+    WasmDecodeErrInvalidImport,
+    WasmDecodeErrInvalidGlobalMutability
 } WasmDecodeErrorCode;
 
 typedef struct {

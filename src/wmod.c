@@ -98,12 +98,16 @@ void wmod_dump_limits(WasmLimits *limits) {
     printf("]");
 }
 
+void wmod_dump_table(WasmTable *table) {
+    wmod_dump_limits(&table->limits);
+    printf(" %s\n", wmod_str_ref_type(table->reftype));
+}
+
 void wmod_dump_tables(WasmTables *tables) {
     WasmTable *data = tables->ptr;
     for (size_t i = 0; i < tables->len; i++) {
         printf("<tb%zu>: ", i);
-        wmod_dump_limits(&data[i].limits);
-        printf(" %s\n", wmod_str_ref_type(data[i].reftype));
+        wmod_dump_table(&data[i]);
     }
 }
 
@@ -112,6 +116,59 @@ void wmod_dump_mems(WasmMems *mems) {
     for (size_t i = 0; i < mems->len; i++) {
         printf("<m%zu>: ", i);
         wmod_dump_limits(&data[i].limits);
+        printf("\n");
+    }
+}
+
+void wmod_dump_name(WasmName *name) {
+    fwrite(name->bytes, 1, name->len, stdout);
+}
+
+void wmod_dump_global_mutability(WasmGlobalMutability mut) {
+    switch (mut) {
+        case WasmGlobalConst:
+            printf("const");
+            break;
+        case WasmGlobalVar:
+            printf("var");
+            break;
+    }
+}
+
+void wmod_dump_import_desc(WasmImportDesc *desc) {
+    switch (desc->kind) {
+        case WasmImportFunc:
+            printf("func <t%u>", desc->value.func);
+            break;
+        case WasmImportTable:
+            printf("table ");
+            wmod_dump_table(&desc->value.table);
+            break;
+        case WasmImportMem:
+            printf("mem ");
+            wmod_dump_limits(&desc->value.mem.limits);
+            break;
+        case WasmImportGlobal:
+            printf("global ");
+            wmod_dump_global_mutability(desc->value.global.mut);
+            printf(" ");
+            wmod_dump_val_type(&desc->value.global.valtype);
+            break;
+    }
+}
+
+void wmod_dump_import(WasmImport *import) {
+    wmod_dump_name(&import->module_name);
+    printf("::");
+    wmod_dump_name(&import->item_name);
+    printf(" ");
+    wmod_dump_import_desc(&import->desc);
+}
+
+void wmod_dump_imports(WasmImports *imports) {
+    WasmImport *data = imports->ptr;
+    for (size_t i = 0; i < imports->len; i++) {
+        wmod_dump_import(&data[i]);
         printf("\n");
     }
 }
@@ -126,6 +183,13 @@ void wmod_dump(WasmModule *wmod) {
     wmod_dump_tables(&wmod->tables);
     printf("-------mems: %zu-------\n", wmod->mems.len);
     wmod_dump_mems(&wmod->mems);
+    printf("-------imports: %zu-------\n", wmod->imports.len);
+    wmod_dump_imports(&wmod->imports);
+}
+
+void wmod_name_init(WasmName *name) {
+    name->len = 0;
+    name->bytes = NULL;
 }
 
 void wmod_func_type_init(WasmFuncType *type) {
@@ -137,6 +201,11 @@ void wmod_func_init(WasmFunc *func) {
     func->type_idx = 0;
     vec_init(&func->locals);
     vec_init(&func->body);
+}
+
+void wmod_import_init(WasmImport *import) {
+    wmod_name_init(&import->module_name);
+    wmod_name_init(&import->item_name);
 }
 
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype) {
@@ -157,4 +226,8 @@ wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table) {
 
 wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem) {
     return vec_push_back(&wmod->mems, sizeof(WasmMemType), mem);
+}
+
+void wmod_push_back_import(WasmModule *wmod, WasmImport *import) {
+    vec_push_back(&wmod->imports, sizeof(WasmImport), import);
 }

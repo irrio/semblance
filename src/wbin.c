@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/_types/_u_int32_t.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -212,6 +213,86 @@ WasmDecodeResult wbin_decode_mems(void* data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_name(void* data,  WasmName *name) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+    name->len = len;
+    name->bytes = data;
+    return wbin_ok(data + len);
+}
+
+WasmDecodeResult wbin_decode_global_mutability(void *data, WasmGlobalMutability *mut) {
+    u_int8_t *bytes = data;
+
+    switch (bytes[0]) {
+        case 0x00:
+            *mut = WasmGlobalConst;
+            break;
+        case 0x01:
+            *mut = WasmGlobalVar;
+            break;
+        default:
+            return wbin_err(WasmDecodeErrInvalidGlobalMutability, 0);
+    }
+
+    return wbin_ok(bytes + 1);
+}
+
+WasmDecodeResult wbin_decode_global(void *data, WasmGlobalType *global) {
+    WasmDecodeResult val_result = wbin_decode_val_type(data, &global->valtype);
+    if (!wbin_is_ok(val_result)) return val_result;
+    data = val_result.value.next_data;
+    return wbin_decode_global_mutability(data, &global->mut);
+}
+
+WasmDecodeResult wbin_decode_import_desc(void *data, WasmImportDesc *desc) {
+    u_int8_t *bytes = data;
+
+    switch (bytes[0]) {
+        case 0x00:
+            desc->kind = WasmImportFunc;
+            return wbin_ok(wbin_decode_leb128(bytes + 1, &desc->value.func));
+        case 0x01:
+            desc->kind = WasmImportTable;
+            return wbin_decode_table(bytes + 1, &desc->value.table);
+        case 0x02:
+            desc->kind = WasmImportMem;
+            return wbin_decode_mem(bytes + 1, &desc->value.mem);
+        case 0x03:
+            desc->kind = WasmImportGlobal;
+            return wbin_decode_global(bytes + 1, &desc->value.global);
+        default:
+            return wbin_err(WasmDecodeErrInvalidImport, 0);
+    }
+}
+
+WasmDecodeResult wbin_decode_import(void *data, WasmImport *import) {
+    WasmDecodeResult modname_result = wbin_decode_name(data, &import->module_name);
+    if (!wbin_is_ok(modname_result)) return modname_result;
+    data = modname_result.value.next_data;
+    WasmDecodeResult name_result = wbin_decode_name(data, &import->item_name);
+    if (!wbin_is_ok(name_result)) return name_result;
+    data = name_result.value.next_data;
+    return wbin_decode_import_desc(data, &import->desc);
+}
+
+WasmDecodeResult wbin_decode_imports(void *data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len > 0) {
+        WasmImport import;
+        wmod_import_init(&import);
+        WasmDecodeResult result = wbin_decode_import(data, &import);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        wmod_push_back_import(wmod, &import);
+        len--;
+    }
+
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     printf("section_id: %d\n", id);
     switch (id) {
@@ -223,8 +304,9 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_tables(section, wmod);
         case SectionIdMemory:
             return wbin_decode_mems(section, wmod);
-        case SectionIdCustom:
         case SectionIdImport:
+            return wbin_decode_imports(section, wmod);
+        case SectionIdCustom:
         case SectionIdGlobal:
         case SectionIdExport:
         case SectionIdStart:
@@ -298,8 +380,12 @@ char *wbin_explain_error_code(WasmDecodeResult result) {
             return "invalid type";
         case WasmDecodeErrUnknownValueType:
             return "unknown value type";
+        case WasmDecodeErrInvalidImport:
+            return "invalid import";
+        case WasmDecodeErrInvalidGlobalMutability:
+            return "invalid global mutability";
         default:
-            return "unknown state";
+            return "unknown error code";
     }
 }
 
