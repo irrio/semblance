@@ -173,6 +173,37 @@ void wmod_dump_imports(WasmImports *imports) {
     }
 }
 
+void wmod_dump_export_desc(WasmExportDesc *desc) {
+    switch (desc->kind) {
+        case WasmExportFunc:
+            printf("func <f%u>", desc->value.func);
+            break;
+        case WasmExportTable:
+            printf("table <tb%u>", desc->value.table);
+            break;
+        case WasmExportMem:
+            printf("mem <m%u>", desc->value.mem);
+            break;
+        case WasmExportGlobal:
+            printf("global <g%u>", desc->value.global);
+            break;
+    }
+}
+
+void wmod_dump_export(WasmExport *exp) {
+    wmod_dump_name(&exp->name);
+    printf(" ");
+    wmod_dump_export_desc(&exp->desc);
+}
+
+void wmod_dump_exports(WasmExports *exp) {
+    WasmExport *data = exp->ptr;
+    for (size_t i = 0; i < exp->len; i++) {
+        wmod_dump_export(&data[i]);
+        printf("\n");
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
@@ -185,6 +216,8 @@ void wmod_dump(WasmModule *wmod) {
     wmod_dump_mems(&wmod->mems);
     printf("-------imports: %zu-------\n", wmod->imports.len);
     wmod_dump_imports(&wmod->imports);
+    printf("-------exports: %zu-------\n", wmod->exports.len);
+    wmod_dump_exports(&wmod->exports);
 }
 
 void wmod_name_init(WasmName *name) {
@@ -206,6 +239,10 @@ void wmod_func_init(WasmFunc *func) {
 void wmod_import_init(WasmImport *import) {
     wmod_name_init(&import->module_name);
     wmod_name_init(&import->item_name);
+}
+
+void wmod_export_init(WasmExport *exp) {
+    wmod_name_init(&exp->name);
 }
 
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype) {
@@ -230,4 +267,8 @@ wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem) {
 
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import) {
     vec_push_back(&wmod->imports, sizeof(WasmImport), import);
+}
+
+void wmod_push_back_export(WasmModule *wmod, WasmExport *exp) {
+    vec_push_back(&wmod->exports, sizeof(WasmExport), exp);
 }
