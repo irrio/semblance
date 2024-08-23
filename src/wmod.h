@@ -130,7 +130,11 @@ typedef u_int32_t wasm_global_idx_t;
 
 typedef Vec WasmElems;
 typedef Vec WasmDatas;
-typedef Vec WasmStart;
+
+typedef struct {
+    bool present;
+    wasm_func_idx_t func_idx;
+} WasmStart;
 
 typedef enum {
     WasmExportFunc,

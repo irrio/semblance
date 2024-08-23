@@ -338,6 +338,12 @@ WasmDecodeResult wbin_decode_exports(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_start(void *data, WasmModule *wmod) {
+    wmod->start.present = true;
+    data = wbin_decode_leb128(data, &wmod->start.func_idx);
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     switch (id) {
         case SectionIdType:
@@ -352,9 +358,10 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_imports(section, wmod);
         case SectionIdExport:
             return wbin_decode_exports(section, wmod);
+        case SectionIdStart:
+            return wbin_decode_start(section, wmod);
         case SectionIdCustom:
         case SectionIdGlobal:
-        case SectionIdStart:
         case SectionIdElement:
         case SectionIdCode:
         case SectionIdData:

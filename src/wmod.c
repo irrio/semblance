@@ -11,11 +11,12 @@ void wmod_init(WasmModule *wmod) {
     vec_init(&wmod->globals);
     vec_init(&wmod->elems);
     vec_init(&wmod->datas);
-    vec_init(&wmod->start);
     vec_init(&wmod->imports);
     vec_init(&wmod->exports);
     vec_init(&wmod->customs);
     wmod->meta.version = 0;
+    wmod->start.present = false;
+    wmod->start.func_idx = 0;
 }
 
 char *wmod_str_num_type(WasmNumType numtype) {
@@ -204,6 +205,12 @@ void wmod_dump_exports(WasmExports *exp) {
     }
 }
 
+void wmod_dump_start(WasmStart *start) {
+    if (start->present) {
+        printf("start: <f%u>\n", start->func_idx);
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
@@ -218,6 +225,8 @@ void wmod_dump(WasmModule *wmod) {
     wmod_dump_imports(&wmod->imports);
     printf("-------exports: %zu-------\n", wmod->exports.len);
     wmod_dump_exports(&wmod->exports);
+    printf("-------start: %d-------\n", wmod->start.present);
+    wmod_dump_start(&wmod->start);
 }
 
 void wmod_name_init(WasmName *name) {

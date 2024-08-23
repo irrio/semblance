@@ -35,6 +35,7 @@
   (export "__heap_end" (global 7))
   (export "__memory_base" (global 8))
   (export "__table_base" (global 9))
+  (start 0)
   (@producers
     (processed-by "Homebrew clang" "18.1.8")
   )
