@@ -87,7 +87,9 @@ void wmod_dump_funcs(WasmFuncs *funcs) {
     WasmFunc *data = funcs->ptr;
     for (size_t i = 0; i < funcs->len; i++) {
         printf("<f%zu>: ", i);
-        printf("<t%u>\n", data[i].type_idx);
+        printf("<t%u> ", data[i].type_idx);
+        printf("locals(%zu) ", data[i].locals.len);
+        printf("body(%zu)\n", data[i].body.len);
     }
 }
 
@@ -280,4 +282,15 @@ void wmod_push_back_import(WasmModule *wmod, WasmImport *import) {
 
 void wmod_push_back_export(WasmModule *wmod, WasmExport *exp) {
     vec_push_back(&wmod->exports, sizeof(WasmExport), exp);
+}
+
+void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *valtype) {
+    while (n > 0) {
+        vec_push_back(&func->locals, sizeof(WasmValueType), valtype);
+        n--;
+    }
+}
+
+void wmod_func_push_back_instruction(WasmFunc *func, WasmInstruction *ins) {
+    vec_push_back(&func->body, sizeof(WasmInstruction), ins);
 }

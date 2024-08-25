@@ -344,6 +344,68 @@ WasmDecodeResult wbin_decode_start(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_locals(void *data, WasmFunc *func) {
+    u_int32_t len;
+    data =  wbin_decode_leb128(data, &len);
+    for (size_t i = 0; i < len; i++) {
+        u_int32_t n;
+        WasmValueType valtype;
+        data = wbin_decode_leb128(data, &n);
+        WasmDecodeResult val_result = wbin_decode_val_type(data, &valtype);
+        if (!wbin_is_ok(val_result)) return val_result;
+        data = val_result.value.next_data;
+        wmod_func_push_back_locals(func, n, &valtype);
+    }
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
+    ins->opcode = WasmOpExprEnd;
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_expr(void *data, WasmFunc *func) {
+    WasmInstruction instr;
+    while (true) {
+        WasmDecodeResult result = wbin_decode_instr(data, &instr);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        if (instr.opcode == WasmOpExprEnd) {
+            break;
+        } else {
+            wmod_func_push_back_instruction(func, &instr);
+        }
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_code(void *data, WasmFunc *func) {
+    WasmDecodeResult locals_result = wbin_decode_locals(data, func);
+    if (!wbin_is_ok(locals_result)) return locals_result;
+    data = locals_result.value.next_data;
+    WasmDecodeResult expr_result = wbin_decode_expr(data, func);
+    if (!wbin_is_ok(expr_result)) return expr_result;
+    data = expr_result.value.next_data;
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_codes(void *data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    WasmFunc *func = wmod->funcs.ptr;
+    for (size_t i = 0; i < len; i++) {
+        u_int32_t code_len;
+        data = wbin_decode_leb128(data, &code_len);
+        WasmDecodeResult result = wbin_decode_code(data, &func[i]);
+        if (!wbin_is_ok(result)) return result;
+        data += code_len;
+    }
+
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     switch (id) {
         case SectionIdType:
@@ -360,10 +422,11 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_exports(section, wmod);
         case SectionIdStart:
             return wbin_decode_start(section, wmod);
+        case SectionIdCode:
+            return wbin_decode_codes(section, wmod);
         case SectionIdCustom:
         case SectionIdGlobal:
         case SectionIdElement:
-        case SectionIdCode:
         case SectionIdData:
         case SectionIdDataCount:
             return wbin_ok(section);

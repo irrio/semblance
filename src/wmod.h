@@ -54,7 +54,8 @@ typedef VEC(WasmFuncType) WasmTypes;
 typedef u_int32_t wasm_type_idx_t;
 
 typedef enum {
-    WasmInstructionNop
+    WasmNop,
+    WasmOpExprEnd
 } WasmOpcode;
 
 typedef struct {
@@ -198,3 +199,6 @@ wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table);
 wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem);
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import);
 void wmod_push_back_export(WasmModule *wmod, WasmExport *exp);
+
+void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *val);
+void wmod_func_push_back_instruction(WasmFunc *func, WasmInstruction *ins);
