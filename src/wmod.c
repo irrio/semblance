@@ -291,6 +291,6 @@ void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *valt
     }
 }
 
-void wmod_func_push_back_instruction(WasmFunc *func, WasmInstruction *ins) {
-    vec_push_back(&func->body, sizeof(WasmInstruction), ins);
+void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins) {
+    vec_push_back(expr, sizeof(WasmInstruction), ins);
 }

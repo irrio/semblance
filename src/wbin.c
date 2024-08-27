@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/_types/_u_int32_t.h>
+#include <sys/_types/_u_int8_t.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -30,6 +31,12 @@ WasmDecodeResult wbin_ok(void *next_data) {
     return out;
 }
 
+void *wbin_take_byte(void *data, u_int8_t *out) {
+    u_int8_t *bytes = data;
+    *out = bytes[0];
+    return bytes + 1;
+}
+
 void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
     u_int32_t shift = 0;
     size_t byte_idx = 0;
@@ -47,8 +54,9 @@ void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
 }
 
 WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
-    u_int8_t *bytes = data;
-    switch (bytes[0]) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    switch (tag) {
         case 0x70:
             *out = WasmRefFunc;
             break;
@@ -58,12 +66,13 @@ WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
         default:
             return wbin_err(WasmDecodeErrInvalidType, 0);
     }
-    return wbin_ok(bytes + 1);
+    return wbin_ok(data);
 }
 
 WasmDecodeResult wbin_decode_val_type(void *data, WasmValueType *out) {
-    u_int8_t *bytes = data;
-    switch (bytes[0]) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    switch (tag) {
         case 0x7F:
             out->kind = WasmValueTypeNum;
             out->value.num = WasmNumI32;
@@ -95,7 +104,7 @@ WasmDecodeResult wbin_decode_val_type(void *data, WasmValueType *out) {
         default:
             return wbin_err(WasmDecodeErrUnknownValueType, 0);
     }
-    return wbin_ok(&bytes[1]);
+    return wbin_ok(data);
 }
 
 WasmDecodeResult wbin_decode_result_type(void *data, WasmResultType *out) {
@@ -113,9 +122,10 @@ WasmDecodeResult wbin_decode_result_type(void *data, WasmResultType *out) {
 }
 
 WasmDecodeResult wbin_decode_type(void *data, WasmFuncType *out) {
-    u_int8_t *bytes = data;
-    if (*bytes != 0x60) return wbin_err(WasmDecodeErrInvalidType, 0);
-    WasmDecodeResult input_result = wbin_decode_result_type(&bytes[1], &out->input_type);
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    if (tag != 0x60) return wbin_err(WasmDecodeErrInvalidType, 0);
+    WasmDecodeResult input_result = wbin_decode_result_type(data, &out->input_type);
     if (!wbin_is_ok(input_result)) return input_result;
     return wbin_decode_result_type(input_result.value.next_data, &out->output_type);
 }
@@ -153,8 +163,9 @@ WasmDecodeResult wbin_decode_funcs(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_limits(void *data, WasmLimits *limits) {
-    u_int8_t *bytes = data;
-    switch (bytes[0]) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    switch (tag) {
         case 0x00:
             limits->bounded = false;
             break;
@@ -164,7 +175,7 @@ WasmDecodeResult wbin_decode_limits(void *data, WasmLimits *limits) {
         default:
             return wbin_err(WasmDecodeErrInvalidLimit, 0);
     }
-    data = wbin_decode_leb128(bytes + 1, &limits->min);
+    data = wbin_decode_leb128(data, &limits->min);
     if (limits->bounded) {
         data = wbin_decode_leb128(data, &limits->max);
     }
@@ -222,9 +233,9 @@ WasmDecodeResult wbin_decode_name(void* data,  WasmName *name) {
 }
 
 WasmDecodeResult wbin_decode_global_mutability(void *data, WasmGlobalMutability *mut) {
-    u_int8_t *bytes = data;
-
-    switch (bytes[0]) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    switch (tag) {
         case 0x00:
             *mut = WasmGlobalConst;
             break;
@@ -234,8 +245,7 @@ WasmDecodeResult wbin_decode_global_mutability(void *data, WasmGlobalMutability 
         default:
             return wbin_err(WasmDecodeErrInvalidGlobalMutability, 0);
     }
-
-    return wbin_ok(bytes + 1);
+    return wbin_ok(data);
 }
 
 WasmDecodeResult wbin_decode_global(void *data, WasmGlobalType *global) {
@@ -246,21 +256,21 @@ WasmDecodeResult wbin_decode_global(void *data, WasmGlobalType *global) {
 }
 
 WasmDecodeResult wbin_decode_import_desc(void *data, WasmImportDesc *desc) {
-    u_int8_t *bytes = data;
-
-    switch (bytes[0]) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    switch (tag) {
         case 0x00:
             desc->kind = WasmImportFunc;
-            return wbin_ok(wbin_decode_leb128(bytes + 1, &desc->value.func));
+            return wbin_ok(wbin_decode_leb128(data, &desc->value.func));
         case 0x01:
             desc->kind = WasmImportTable;
-            return wbin_decode_table(bytes + 1, &desc->value.table);
+            return wbin_decode_table(data, &desc->value.table);
         case 0x02:
             desc->kind = WasmImportMem;
-            return wbin_decode_mem(bytes + 1, &desc->value.mem);
+            return wbin_decode_mem(data, &desc->value.mem);
         case 0x03:
             desc->kind = WasmImportGlobal;
-            return wbin_decode_global(bytes + 1, &desc->value.global);
+            return wbin_decode_global(data, &desc->value.global);
         default:
             return wbin_err(WasmDecodeErrInvalidImport, 0);
     }
@@ -294,21 +304,21 @@ WasmDecodeResult wbin_decode_imports(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_export_desc(void *data, WasmExportDesc *desc) {
-    u_int8_t *bytes = data;
-
-    switch (bytes[0]) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+    switch (tag) {
         case 0x00:
             desc->kind = WasmExportFunc;
-            return wbin_ok(wbin_decode_leb128(bytes + 1, &desc->value.func));
+            return wbin_ok(wbin_decode_leb128(data, &desc->value.func));
         case 0x01:
             desc->kind = WasmExportTable;
-            return wbin_ok(wbin_decode_leb128(bytes + 1, &desc->value.table));
+            return wbin_ok(wbin_decode_leb128(data, &desc->value.table));
         case 0x02:
             desc->kind = WasmExportMem;
-            return wbin_ok(wbin_decode_leb128(bytes + 1, &desc->value.mem));
+            return wbin_ok(wbin_decode_leb128(data, &desc->value.mem));
         case 0x03:
             desc->kind = WasmExportGlobal;
-            return wbin_ok(wbin_decode_leb128(bytes + 1, &desc->value.global));
+            return wbin_ok(wbin_decode_leb128(data, &desc->value.global));
         default:
             return wbin_err(WasmDecodeErrInvalidExport, 0);
     }
@@ -359,12 +369,52 @@ WasmDecodeResult wbin_decode_locals(void *data, WasmFunc *func) {
     return wbin_ok(data);
 }
 
-WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
-    ins->opcode = WasmOpExprEnd;
+WasmDecodeResult wbin_decode_blocktype(void *data, WasmBlockType *blocktype) {
+    if (*(u_int8_t*)data == 0x40) {
+        blocktype->kind = WasmBlockTypeEmpty;
+        return wbin_ok((u_int8_t*)data + 1);
+    }
+    WasmDecodeResult val_result = wbin_decode_val_type(data, &blocktype->value.valtype);
+    if (wbin_is_ok(val_result)) {
+        blocktype->kind = WasmBlockTypeVal;
+        return val_result;
+    }
+    if (!wbin_is_err(val_result, WasmDecodeErrInvalidType)) return val_result;
+
+    // TODO: Decode signed leb128 type idx
+
     return wbin_ok(data);
 }
 
-WasmDecodeResult wbin_decode_expr(void *data, WasmFunc *func) {
+WasmDecodeResult wbin_decode_block(void *data, WasmBlockParams *block) {
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
+    u_int8_t tag;
+    data = wbin_take_byte(data, &tag);
+
+    switch (tag) {
+        case 0x00:
+            ins->opcode = WasmOpUnreachable;
+            break;
+        case 0x01:
+            ins->opcode = WasmOpNop;
+            break;
+        case 0x02:
+            ins->opcode = WasmOpBlock;
+            return wbin_decode_block(data, &ins->params.block);
+        // END
+        default:
+        case 0x0B:
+            ins->opcode = WasmOpExprEnd;
+            break;
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_expr(void *data, WasmExpr *expr) {
     WasmInstruction instr;
     while (true) {
         WasmDecodeResult result = wbin_decode_instr(data, &instr);
@@ -373,7 +423,7 @@ WasmDecodeResult wbin_decode_expr(void *data, WasmFunc *func) {
         if (instr.opcode == WasmOpExprEnd) {
             break;
         } else {
-            wmod_func_push_back_instruction(func, &instr);
+            wmod_expr_push_back_instruction(expr, &instr);
         }
     }
 
@@ -384,7 +434,7 @@ WasmDecodeResult wbin_decode_code(void *data, WasmFunc *func) {
     WasmDecodeResult locals_result = wbin_decode_locals(data, func);
     if (!wbin_is_ok(locals_result)) return locals_result;
     data = locals_result.value.next_data;
-    WasmDecodeResult expr_result = wbin_decode_expr(data, func);
+    WasmDecodeResult expr_result = wbin_decode_expr(data, &func->body);
     if (!wbin_is_ok(expr_result)) return expr_result;
     data = expr_result.value.next_data;
     return wbin_ok(data);
@@ -517,6 +567,11 @@ char *wbin_explain_error_cause(WasmDecodeResult result) {
 
 bool wbin_is_ok(WasmDecodeResult result) {
     return result.state == WasmDecodeOk;
+}
+
+bool wbin_is_err(WasmDecodeResult result, WasmDecodeErrorCode code) {
+    return result.state == WasmDecodeErr
+        && result.value.error.code == code;
 }
 
 bool wbin_error_has_cause(WasmDecodeResult result) {

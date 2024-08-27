@@ -75,4 +75,5 @@ WasmDecodeResult wbin_decode_module(size_t size, WasmHeader *header, WasmModule 
 char *wbin_explain_error_code(WasmDecodeResult result);
 char *wbin_explain_error_cause(WasmDecodeResult result);
 bool wbin_is_ok(WasmDecodeResult result);
+bool wbin_is_err(WasmDecodeResult result, WasmDecodeErrorCode code);
 bool wbin_error_has_cause(WasmDecodeResult result);

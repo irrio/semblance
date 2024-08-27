@@ -6,6 +6,13 @@
 #include <stdbool.h>
 #include "vec.h"
 
+typedef u_int32_t wasm_func_idx_t;
+typedef u_int32_t wasm_type_idx_t;
+typedef u_int32_t wasm_label_idx_t;
+typedef u_int32_t wasm_global_idx_t;
+typedef u_int32_t wasm_table_idx_t;
+typedef u_int32_t wasm_mem_idx_t;
+
 typedef struct {
     u_int32_t min;
     bool bounded;
@@ -51,25 +58,87 @@ typedef struct {
 } WasmFuncType;
 
 typedef VEC(WasmFuncType) WasmTypes;
-typedef u_int32_t wasm_type_idx_t;
+
+typedef VEC(WasmInstruction) WasmExpr;
 
 typedef enum {
-    WasmNop,
+    WasmBlockTypeEmpty,
+    WasmBlockTypeIdx,
+    WasmBlockTypeVal,
+} WasmBlockTypeKind;
+
+typedef struct {
+    WasmBlockTypeKind kind;
+    union {
+        wasm_type_idx_t typeidx;
+        WasmValueType valtype;
+    } value;
+} WasmBlockType;
+
+typedef struct {
+    WasmBlockType blocktype;
+    WasmExpr expr;
+} WasmBlockParams;
+
+typedef struct {
+    WasmBlockType blocktype;
+    WasmExpr then_body;
+    WasmExpr else_body;
+} WasmIfParams;
+
+
+typedef struct {
+    wasm_label_idx_t label;
+} WasmBreakParams;
+
+typedef struct {
+    VEC(wasm_label_idx_t) labels;
+    wasm_label_idx_t default_label;
+} WasmBreakTableParams;
+
+typedef struct {
+    wasm_func_idx_t funcidx;
+} WasmCallParams;
+
+typedef struct {
+    wasm_table_idx_t tableidx;
+    wasm_type_idx_t typeidx;
+} WasmCallIndirectParams;
+
+typedef enum {
+    WasmOpUnreachable,
+    WasmOpNop,
+    WasmOpBlock,
+    WasmOpLoop,
+    WasmOpIf,
+    WasmOpBreak,
+    WasmOpBreakIf,
+    WasmOpBreakTable,
+    WasmOpReturn,
+    WasmOpCall,
+    WasmOpCallIndirect,
     WasmOpExprEnd
 } WasmOpcode;
 
 typedef struct {
     WasmOpcode opcode;
+    union {
+        WasmBlockParams block;
+        WasmIfParams _if;
+        WasmBreakParams _break;
+        WasmBreakTableParams break_table;
+        WasmCallParams call;
+        WasmCallIndirectParams call_indirect;
+    } params;
 } WasmInstruction;
 
 typedef struct {
     wasm_type_idx_t type_idx;
     VEC(WasmValueType) locals;
-    VEC(WasmInstruction) body;
+    WasmExpr body;
 } WasmFunc;
 
 typedef VEC(WasmFunc) WasmFuncs;
-typedef u_int32_t wasm_func_idx_t;
 
 typedef struct {
     WasmLimits limits;
@@ -77,14 +146,12 @@ typedef struct {
 } WasmTable;
 
 typedef VEC(WasmTable) WasmTables;
-typedef u_int32_t wasm_table_idx_t;
 
 typedef struct {
     WasmLimits limits;
 } WasmMemType;
 
 typedef VEC(WasmMemType) WasmMems;
-typedef u_int32_t wasm_mem_idx_t;
 
 typedef struct {
     size_t len;
@@ -127,7 +194,6 @@ typedef struct {
 typedef VEC(WasmImport) WasmImports;
 
 typedef Vec WasmGlobals;
-typedef u_int32_t wasm_global_idx_t;
 
 typedef Vec WasmElems;
 typedef Vec WasmDatas;
@@ -201,4 +267,4 @@ void wmod_push_back_import(WasmModule *wmod, WasmImport *import);
 void wmod_push_back_export(WasmModule *wmod, WasmExport *exp);
 
 void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *val);
-void wmod_func_push_back_instruction(WasmFunc *func, WasmInstruction *ins);
+void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins);
