@@ -12,6 +12,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+WasmDecodeResult wbin_decode_expr(void *data, WasmExpr *expr);
+WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins);
+
 WasmDecodeResult wbin_err(WasmDecodeErrorCode error_code, int cause) {
     WasmDecodeResult out;
     out.state = WasmDecodeErr;
@@ -51,6 +54,28 @@ void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
         byte_idx++;
     }
     return data + byte_idx + 1;
+}
+
+void *wbin_decode_leb128_signed(u_leb128_prefixed data, u_int32_t *out) {
+    int64_t result = 0;
+    u_int32_t shift = 0;
+
+    size_t idx = 0;
+    u_int8_t byte = data[idx];
+    do {
+      byte = data[idx];
+      result |= (byte & ~(1 << 7)) << shift;
+      shift += 7;
+      idx++;
+    } while ((byte & (1 << 7)) != 0);
+
+    if ((shift < 64) && ((byte & 0x40) == 1)) {
+        result |= (~0 << shift);
+    }
+
+    *out = result;
+
+    return data + idx + 1;
 }
 
 WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
@@ -381,12 +406,71 @@ WasmDecodeResult wbin_decode_blocktype(void *data, WasmBlockType *blocktype) {
     }
     if (!wbin_is_err(val_result, WasmDecodeErrInvalidType)) return val_result;
 
-    // TODO: Decode signed leb128 type idx
+    blocktype->kind = WasmBlockTypeIdx;
+    data = wbin_decode_leb128_signed(data, &blocktype->value.typeidx);
 
     return wbin_ok(data);
 }
 
 WasmDecodeResult wbin_decode_block(void *data, WasmBlockParams *block) {
+    WasmDecodeResult bt_result = wbin_decode_blocktype(data, &block->blocktype);
+    if (!wbin_is_ok(bt_result)) return bt_result;
+    data = bt_result.value.next_data;
+    return wbin_decode_expr(data, &block->expr);
+}
+
+WasmDecodeResult wbin_decode_if(void *data, WasmIfParams *_if) {
+    WasmDecodeResult bt_result = wbin_decode_blocktype(data, &_if->blocktype);
+    if (!wbin_is_ok(bt_result)) return bt_result;
+    data = bt_result.value.next_data;
+
+    WasmInstruction instr;
+    WasmExpr *expr = &_if->then_body;
+    while (true) {
+        WasmDecodeResult result = wbin_decode_instr(data, &instr);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        if (instr.opcode == WasmOpElse) {
+            expr = &_if->else_body;
+        } if (instr.opcode == WasmOpExprEnd) {
+            break;
+        } else {
+            wmod_expr_push_back_instruction(expr, &instr);
+        }
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_break(void *data, WasmBreakParams *br) {
+    data = wbin_decode_leb128(data, &br->label);
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_break_table(void *data, WasmBreakTableParams *bt) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len > 0) {
+        wasm_type_idx_t typeidx;
+        data = wbin_decode_leb128(data, &typeidx);
+        vec_push_back(&bt->labels, sizeof(wasm_type_idx_t), &typeidx);
+        len--;
+    }
+
+    data = wbin_decode_leb128(data, &bt->default_label);
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_call(void *data, WasmCallParams *call) {
+    data = wbin_decode_leb128(data, &call->funcidx);
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_call_indirect(void *data, WasmCallIndirectParams *call) {
+    data = wbin_decode_leb128(data, &call->typeidx);
+    data = wbin_decode_leb128(data, &call->tableidx);
     return wbin_ok(data);
 }
 
@@ -403,7 +487,39 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
             break;
         case 0x02:
             ins->opcode = WasmOpBlock;
+            vec_init(&ins->params.block.expr);
             return wbin_decode_block(data, &ins->params.block);
+        case 0x03:
+            ins->opcode = WasmOpLoop;
+            vec_init(&ins->params.block.expr);
+            return wbin_decode_block(data, &ins->params.block);
+        case 0x04:
+            ins->opcode = WasmOpIf;
+            vec_init(&ins->params._if.then_body);
+            vec_init(&ins->params._if.else_body);
+            return wbin_decode_if(data, &ins->params._if);
+        case 0x05:
+            ins->opcode = WasmOpElse;
+            break;
+        case 0x0C:
+            ins->opcode = WasmOpBreak;
+            return wbin_decode_break(data, &ins->params._break);
+        case 0x0D:
+            ins->opcode = WasmOpBreakIf;
+            return wbin_decode_break(data, &ins->params._break);
+        case 0x0E:
+            ins->opcode = WasmOpBreakTable;
+            vec_init(&ins->params.break_table.labels);
+            return wbin_decode_break_table(data, &ins->params.break_table);
+        case 0x0F:
+            ins->opcode = WasmOpReturn;
+            break;
+        case 0x10:
+            ins->opcode = WasmOpCall;
+            return wbin_decode_call(data, &ins->params.call);
+        case 0x11:
+            ins->opcode = WasmOpCallIndirect;
+            return wbin_decode_call_indirect(data, &ins->params.call_indirect);
         // END
         default:
         case 0x0B:

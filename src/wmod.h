@@ -111,6 +111,7 @@ typedef enum {
     WasmOpBlock,
     WasmOpLoop,
     WasmOpIf,
+    WasmOpElse,
     WasmOpBreak,
     WasmOpBreakIf,
     WasmOpBreakTable,
