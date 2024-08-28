@@ -269,3 +269,4 @@ void wmod_push_back_export(WasmModule *wmod, WasmExport *exp);
 
 void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *val);
 void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins);
+void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode);

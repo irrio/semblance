@@ -480,50 +480,45 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
 
     switch (tag) {
         case 0x00:
-            ins->opcode = WasmOpUnreachable;
+            wmod_instr_init(ins, WasmOpUnreachable);
             break;
         case 0x01:
-            ins->opcode = WasmOpNop;
+            wmod_instr_init(ins, WasmOpNop);
             break;
         case 0x02:
-            ins->opcode = WasmOpBlock;
-            vec_init(&ins->params.block.expr);
+            wmod_instr_init(ins, WasmOpBlock);
             return wbin_decode_block(data, &ins->params.block);
         case 0x03:
-            ins->opcode = WasmOpLoop;
-            vec_init(&ins->params.block.expr);
+            wmod_instr_init(ins, WasmOpLoop);
             return wbin_decode_block(data, &ins->params.block);
         case 0x04:
-            ins->opcode = WasmOpIf;
-            vec_init(&ins->params._if.then_body);
-            vec_init(&ins->params._if.else_body);
+            wmod_instr_init(ins, WasmOpIf);
             return wbin_decode_if(data, &ins->params._if);
         case 0x05:
-            ins->opcode = WasmOpElse;
+            wmod_instr_init(ins, WasmOpElse);
             break;
         case 0x0C:
-            ins->opcode = WasmOpBreak;
+            wmod_instr_init(ins, WasmOpBreak);
             return wbin_decode_break(data, &ins->params._break);
         case 0x0D:
-            ins->opcode = WasmOpBreakIf;
+            wmod_instr_init(ins, WasmOpBreakIf);
             return wbin_decode_break(data, &ins->params._break);
         case 0x0E:
-            ins->opcode = WasmOpBreakTable;
-            vec_init(&ins->params.break_table.labels);
+            wmod_instr_init(ins, WasmOpBreakTable);
             return wbin_decode_break_table(data, &ins->params.break_table);
         case 0x0F:
-            ins->opcode = WasmOpReturn;
+            wmod_instr_init(ins, WasmOpReturn);
             break;
         case 0x10:
-            ins->opcode = WasmOpCall;
+            wmod_instr_init(ins, WasmOpCall);
             return wbin_decode_call(data, &ins->params.call);
         case 0x11:
-            ins->opcode = WasmOpCallIndirect;
+            wmod_instr_init(ins, WasmOpCallIndirect);
             return wbin_decode_call_indirect(data, &ins->params.call_indirect);
         // END
         default:
         case 0x0B:
-            ins->opcode = WasmOpExprEnd;
+            wmod_instr_init(ins, WasmOpExprEnd);
             break;
     }
 

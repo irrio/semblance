@@ -294,3 +294,22 @@ void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *valt
 void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins) {
     vec_push_back(expr, sizeof(WasmInstruction), ins);
 }
+
+void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode) {
+    instr->opcode = opcode;
+    switch (opcode) {
+        case WasmOpBlock:
+        case WasmOpLoop:
+            vec_init(&instr->params.block.expr);
+            break;
+        case WasmOpIf:
+            vec_init(&instr->params._if.then_body);
+            vec_init(&instr->params._if.else_body);
+            break;
+        case WasmOpBreakTable:
+            vec_init(&instr->params.break_table.labels);
+            break;
+        default:
+            break;
+    }
+}
