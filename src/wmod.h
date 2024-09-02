@@ -10,6 +10,7 @@ typedef u_int32_t wasm_func_idx_t;
 typedef u_int32_t wasm_type_idx_t;
 typedef u_int32_t wasm_label_idx_t;
 typedef u_int32_t wasm_global_idx_t;
+typedef u_int32_t wasm_local_idx_t;
 typedef u_int32_t wasm_table_idx_t;
 typedef u_int32_t wasm_mem_idx_t;
 
@@ -117,6 +118,13 @@ typedef struct {
     VEC(WasmValueType) valuetypes;
 } WasmSelectParams;
 
+typedef struct {
+    union {
+        wasm_local_idx_t local;
+        wasm_global_idx_t global;
+    } idx;
+} WasmVarParams;
+
 typedef enum {
     WasmOpUnreachable,
     WasmOpNop,
@@ -136,6 +144,11 @@ typedef enum {
     WasmOpRefFunc,
     WasmOpDrop,
     WasmOpSelect,
+    WasmOpLocalGet,
+    WasmOpLocalSet,
+    WasmOpLocalTee,
+    WasmOpGlobalGet,
+    WasmOpGlobalSet
 } WasmOpcode;
 
 typedef struct {
@@ -150,6 +163,7 @@ typedef struct {
         WasmRefNullParams ref_null;
         WasmRefFuncParams ref_func;
         WasmSelectParams select;
+        WasmVarParams var;
     } params;
 } WasmInstruction;
 

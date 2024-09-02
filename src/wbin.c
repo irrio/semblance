@@ -546,6 +546,21 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0x1C:
             wmod_instr_init(ins, WasmOpSelect);
             return wbin_decode_val_types(data, &ins->params.select.valuetypes);
+        case 0x20:
+            wmod_instr_init(ins, WasmOpLocalGet);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.var.idx.local));
+        case 0x21:
+            wmod_instr_init(ins, WasmOpLocalSet);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.var.idx.local));
+        case 0x22:
+            wmod_instr_init(ins, WasmOpLocalTee);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.var.idx.local));
+        case 0x23:
+            wmod_instr_init(ins, WasmOpGlobalGet);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.var.idx.global));
+        case 0x24:
+            wmod_instr_init(ins, WasmOpGlobalSet);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.var.idx.global));
         // END
         default:
         case 0x0B:
