@@ -515,6 +515,15 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0x11:
             wmod_instr_init(ins, WasmOpCallIndirect);
             return wbin_decode_call_indirect(data, &ins->params.call_indirect);
+        case 0xD0:
+            wmod_instr_init(ins, WasmOpRefNull);
+            return wbin_decode_reftype(data, &ins->params.ref_null.reftype);
+        case 0xD1:
+            wmod_instr_init(ins, WasmOpRefIsNull);
+            break;
+        case 0xD2:
+            wmod_instr_init(ins, WasmOpRefFunc);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.ref_func.funcidx));
         // END
         default:
         case 0x0B:

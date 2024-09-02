@@ -105,6 +105,14 @@ typedef struct {
     wasm_type_idx_t typeidx;
 } WasmCallIndirectParams;
 
+typedef struct {
+    WasmRefType reftype;
+} WasmRefNullParams;
+
+typedef struct {
+    wasm_func_idx_t funcidx;
+} WasmRefFuncParams;
+
 typedef enum {
     WasmOpUnreachable,
     WasmOpNop,
@@ -118,7 +126,10 @@ typedef enum {
     WasmOpReturn,
     WasmOpCall,
     WasmOpCallIndirect,
-    WasmOpExprEnd
+    WasmOpExprEnd,
+    WasmOpRefNull,
+    WasmOpRefIsNull,
+    WasmOpRefFunc,
 } WasmOpcode;
 
 typedef struct {
@@ -130,6 +141,8 @@ typedef struct {
         WasmBreakTableParams break_table;
         WasmCallParams call;
         WasmCallIndirectParams call_indirect;
+        WasmRefNullParams ref_null;
+        WasmRefFuncParams ref_func;
     } params;
 } WasmInstruction;
 
