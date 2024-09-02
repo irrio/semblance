@@ -487,11 +487,41 @@ WasmDecodeResult wbin_decode_val_types(void *data, VEC(WasmValueType) *valuetype
     return wbin_ok(data);
 }
 
-WasmDecodeResult wbin_decode_table_instr(void *data, WasmInstruction *ins) {
+WasmDecodeResult wbin_decode_zero(void *data) {
+    u_int8_t byte;
+    data = wbin_take_byte(data, &byte);
+    if (byte != 0) {
+        return wbin_err(WasmDecodeErrExpectedZero, 0);
+    }
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_zeroes(void *data) {
+    WasmDecodeResult res = wbin_decode_zero(data);
+    if (!wbin_is_ok(res)) return res;
+    data = res.value.next_data;
+    return wbin_decode_zero(data);
+}
+
+WasmDecodeResult wbin_decode_extended_instr(void *data, WasmInstruction *ins) {
     u_int32_t tag;
     data = wbin_decode_leb128(data, &tag);
 
     switch (tag) {
+        case 8:
+            wmod_instr_init(ins, WasmOpMemoryInit);
+            data = wbin_decode_leb128(data, &ins->params.mem_init.dataidx);
+            return wbin_decode_zero(data);
+        case 9:
+            wmod_instr_init(ins, WasmOpDataDrop);
+            data = wbin_decode_leb128(data, &ins->params.mem_init.dataidx);
+            break;
+        case 10:
+            wmod_instr_init(ins, WasmOpMemoryCopy);
+            return wbin_decode_zeroes(data);
+        case 11:
+            wmod_instr_init(ins, WasmOpMemoryFill);
+            return wbin_decode_zero(data);
         case 12:
             wmod_instr_init(ins, WasmOpTableInit);
             data = wbin_decode_leb128(data, &ins->params.table_init.elemidx);
@@ -522,6 +552,12 @@ WasmDecodeResult wbin_decode_table_instr(void *data, WasmInstruction *ins) {
             return wbin_err(WasmDecodeErrInvalidTableInstr, 0);
     }
 
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_memarg(void *data, WasmMemArg *memarg) {
+    data = wbin_decode_leb128(data, &memarg->align);
+    data = wbin_decode_leb128(data, &memarg->offset);
     return wbin_ok(data);
 }
 
@@ -605,9 +641,84 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0x26:
             wmod_instr_init(ins, WasmOpTableSet);
             return wbin_ok(wbin_decode_leb128(data, &ins->params.table.tableidx));
-        case 0xFC:
-            return wbin_decode_table_instr(data, ins);
+        case 0x28:
+            wmod_instr_init(ins, WasmOpI32Load);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x29:
+            wmod_instr_init(ins, WasmOpI64Load);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x2A:
+            wmod_instr_init(ins, WasmOpF32Load);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x2B:
+            wmod_instr_init(ins, WasmOpF64Load);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x2C:
+            wmod_instr_init(ins, WasmOpI32Load8_s);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x2D:
+            wmod_instr_init(ins, WasmOpI32Load8_u);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x2E:
+            wmod_instr_init(ins, WasmOpI32Load16_s);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x2F:
+            wmod_instr_init(ins, WasmOpI32Load16_u);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x30:
+            wmod_instr_init(ins, WasmOpI64Load8_s);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x31:
+            wmod_instr_init(ins, WasmOpI64Load8_u);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x32:
+            wmod_instr_init(ins, WasmOpI64Load16_s);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x33:
+            wmod_instr_init(ins, WasmOpI64Load16_u);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x34:
+            wmod_instr_init(ins, WasmOpI64Load32_s);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x35:
+            wmod_instr_init(ins, WasmOpI64Load32_u);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x36:
+            wmod_instr_init(ins, WasmOpI32Store);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x37:
+            wmod_instr_init(ins, WasmOpI64Store);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x38:
+            wmod_instr_init(ins, WasmOpF32Store);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x39:
+            wmod_instr_init(ins, WasmOpF64Store);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x3A:
+            wmod_instr_init(ins, WasmOpI32Store8);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x3B:
+            wmod_instr_init(ins, WasmOpI32Store16);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x3C:
+            wmod_instr_init(ins, WasmOpI64Store8);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x3D:
+            wmod_instr_init(ins, WasmOpI64Store16);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x3E:
+            wmod_instr_init(ins, WasmOpI64Store32);
+            return wbin_decode_memarg(data, &ins->params.memarg);
+        case 0x3F:
+            wmod_instr_init(ins, WasmOpMemorySize);
+            return wbin_decode_zero(data);
+        case 0x40:
+            wmod_instr_init(ins, WasmOpMemoryGrow);
+            return wbin_decode_zero(data);
         // END
+        case 0xFC:
+            return wbin_decode_extended_instr(data, ins);
         default:
         case 0x0B:
             wmod_instr_init(ins, WasmOpExprEnd);
@@ -756,6 +867,8 @@ char *wbin_explain_error_code(WasmDecodeResult result) {
             return "invalid export";
         case WasmDecodeErrInvalidTableInstr:
             return "unknown table instruction";
+        case WasmDecodeErrExpectedZero:
+            return "expected zero bytes";
         default:
             return "unknown error code";
     }

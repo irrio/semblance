@@ -13,6 +13,7 @@ typedef u_int32_t wasm_global_idx_t;
 typedef u_int32_t wasm_local_idx_t;
 typedef u_int32_t wasm_table_idx_t;
 typedef u_int32_t wasm_elem_idx_t;
+typedef u_int32_t wasm_data_idx_t;
 typedef u_int32_t wasm_mem_idx_t;
 
 typedef struct {
@@ -144,6 +145,15 @@ typedef struct {
     wasm_elem_idx_t elemidx;
 } WasmElemDropParams;
 
+typedef struct {
+    u_int32_t align;
+    u_int32_t offset;
+} WasmMemArg;
+
+typedef struct {
+    wasm_data_idx_t dataidx;
+} WasmMemoryInitParams;
+
 typedef enum {
     WasmOpUnreachable,
     WasmOpNop,
@@ -175,7 +185,36 @@ typedef enum {
     WasmOpTableFill,
     WasmOpTableCopy,
     WasmOpTableInit,
-    WasmOpElemDrop
+    WasmOpElemDrop,
+    WasmOpI32Load,
+    WasmOpI64Load,
+    WasmOpF32Load,
+    WasmOpF64Load,
+    WasmOpI32Load8_s,
+    WasmOpI32Load8_u,
+    WasmOpI32Load16_s,
+    WasmOpI32Load16_u,
+    WasmOpI64Load8_s,
+    WasmOpI64Load8_u,
+    WasmOpI64Load16_s,
+    WasmOpI64Load16_u,
+    WasmOpI64Load32_s,
+    WasmOpI64Load32_u,
+    WasmOpI32Store,
+    WasmOpI64Store,
+    WasmOpF32Store,
+    WasmOpF64Store,
+    WasmOpI32Store8,
+    WasmOpI32Store16,
+    WasmOpI64Store8,
+    WasmOpI64Store16,
+    WasmOpI64Store32,
+    WasmOpMemorySize,
+    WasmOpMemoryGrow,
+    WasmOpMemoryInit,
+    WasmOpDataDrop,
+    WasmOpMemoryCopy,
+    WasmOpMemoryFill,
 } WasmOpcode;
 
 typedef struct {
@@ -195,6 +234,8 @@ typedef struct {
         WasmTableCopyParams table_copy;
         WasmTableInitParams table_init;
         WasmElemDropParams elem_drop;
+        WasmMemArg memarg;
+        WasmMemoryInitParams mem_init;
     } params;
 } WasmInstruction;
 
