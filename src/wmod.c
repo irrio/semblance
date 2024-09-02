@@ -309,6 +309,9 @@ void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode) {
         case WasmOpBreakTable:
             vec_init(&instr->params.break_table.labels);
             break;
+        case WasmOpSelect:
+            vec_init(&instr->params.select.valuetypes);
+            break;
         default:
             break;
     }

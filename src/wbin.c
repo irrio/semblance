@@ -474,6 +474,19 @@ WasmDecodeResult wbin_decode_call_indirect(void *data, WasmCallIndirectParams *c
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_val_types(void *data, VEC(WasmValueType) *valuetypes) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+    while (len-- > 0) {
+        WasmValueType valtype;
+        WasmDecodeResult result = wbin_decode_val_type(data, &valtype);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        vec_push_back(valuetypes, sizeof(WasmValueType), &valtype);
+    }
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
     u_int8_t tag;
     data = wbin_take_byte(data, &tag);
@@ -524,6 +537,15 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0xD2:
             wmod_instr_init(ins, WasmOpRefFunc);
             return wbin_ok(wbin_decode_leb128(data, &ins->params.ref_func.funcidx));
+        case 0x1A:
+            wmod_instr_init(ins, WasmOpDrop);
+            break;
+        case 0x1B:
+            wmod_instr_init(ins, WasmOpSelect);
+            break;
+        case 0x1C:
+            wmod_instr_init(ins, WasmOpSelect);
+            return wbin_decode_val_types(data, &ins->params.select.valuetypes);
         // END
         default:
         case 0x0B:

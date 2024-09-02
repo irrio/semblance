@@ -113,6 +113,10 @@ typedef struct {
     wasm_func_idx_t funcidx;
 } WasmRefFuncParams;
 
+typedef struct {
+    VEC(WasmValueType) valuetypes;
+} WasmSelectParams;
+
 typedef enum {
     WasmOpUnreachable,
     WasmOpNop,
@@ -130,6 +134,8 @@ typedef enum {
     WasmOpRefNull,
     WasmOpRefIsNull,
     WasmOpRefFunc,
+    WasmOpDrop,
+    WasmOpSelect,
 } WasmOpcode;
 
 typedef struct {
@@ -143,6 +149,7 @@ typedef struct {
         WasmCallIndirectParams call_indirect;
         WasmRefNullParams ref_null;
         WasmRefFuncParams ref_func;
+        WasmSelectParams select;
     } params;
 } WasmInstruction;
 
