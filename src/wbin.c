@@ -487,6 +487,44 @@ WasmDecodeResult wbin_decode_val_types(void *data, VEC(WasmValueType) *valuetype
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_table_instr(void *data, WasmInstruction *ins) {
+    u_int32_t tag;
+    data = wbin_decode_leb128(data, &tag);
+
+    switch (tag) {
+        case 12:
+            wmod_instr_init(ins, WasmOpTableInit);
+            data = wbin_decode_leb128(data, &ins->params.table_init.elemidx);
+            data = wbin_decode_leb128(data, &ins->params.table_init.tableidx);
+            break;
+        case 13:
+            wmod_instr_init(ins, WasmOpElemDrop);
+            data = wbin_decode_leb128(data, &ins->params.elem_drop.elemidx);
+            break;
+        case 14:
+            wmod_instr_init(ins, WasmOpTableCopy);
+            data = wbin_decode_leb128(data, &ins->params.table_copy.src);
+            data = wbin_decode_leb128(data, &ins->params.table_copy.dst);
+            break;
+        case 15:
+            wmod_instr_init(ins, WasmOpTableGrow);
+            data = wbin_decode_leb128(data, &ins->params.table.tableidx);
+            break;
+        case 16:
+            wmod_instr_init(ins, WasmOpTableSize);
+            data = wbin_decode_leb128(data, &ins->params.table.tableidx);
+            break;
+        case 17:
+            wmod_instr_init(ins, WasmOpTableFill);
+            data = wbin_decode_leb128(data, &ins->params.table.tableidx);
+            break;
+        default:
+            return wbin_err(WasmDecodeErrInvalidTableInstr, 0);
+    }
+
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
     u_int8_t tag;
     data = wbin_take_byte(data, &tag);
@@ -561,6 +599,14 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0x24:
             wmod_instr_init(ins, WasmOpGlobalSet);
             return wbin_ok(wbin_decode_leb128(data, &ins->params.var.idx.global));
+        case 0x25:
+            wmod_instr_init(ins, WasmOpTableGet);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.table.tableidx));
+        case 0x26:
+            wmod_instr_init(ins, WasmOpTableSet);
+            return wbin_ok(wbin_decode_leb128(data, &ins->params.table.tableidx));
+        case 0xFC:
+            return wbin_decode_table_instr(data, ins);
         // END
         default:
         case 0x0B:
@@ -708,6 +754,8 @@ char *wbin_explain_error_code(WasmDecodeResult result) {
             return "invalid global mutability";
         case WasmDecodeErrInvalidExport:
             return "invalid export";
+        case WasmDecodeErrInvalidTableInstr:
+            return "unknown table instruction";
         default:
             return "unknown error code";
     }

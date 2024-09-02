@@ -12,6 +12,7 @@ typedef u_int32_t wasm_label_idx_t;
 typedef u_int32_t wasm_global_idx_t;
 typedef u_int32_t wasm_local_idx_t;
 typedef u_int32_t wasm_table_idx_t;
+typedef u_int32_t wasm_elem_idx_t;
 typedef u_int32_t wasm_mem_idx_t;
 
 typedef struct {
@@ -125,6 +126,24 @@ typedef struct {
     } idx;
 } WasmVarParams;
 
+typedef struct {
+    wasm_table_idx_t tableidx;
+} WasmTableParams;
+
+typedef struct {
+    wasm_table_idx_t src;
+    wasm_table_idx_t dst;
+} WasmTableCopyParams;
+
+typedef struct {
+    wasm_table_idx_t tableidx;
+    wasm_elem_idx_t elemidx;
+} WasmTableInitParams;
+
+typedef struct {
+    wasm_elem_idx_t elemidx;
+} WasmElemDropParams;
+
 typedef enum {
     WasmOpUnreachable,
     WasmOpNop,
@@ -148,7 +167,15 @@ typedef enum {
     WasmOpLocalSet,
     WasmOpLocalTee,
     WasmOpGlobalGet,
-    WasmOpGlobalSet
+    WasmOpGlobalSet,
+    WasmOpTableGet,
+    WasmOpTableSet,
+    WasmOpTableSize,
+    WasmOpTableGrow,
+    WasmOpTableFill,
+    WasmOpTableCopy,
+    WasmOpTableInit,
+    WasmOpElemDrop
 } WasmOpcode;
 
 typedef struct {
@@ -164,6 +191,10 @@ typedef struct {
         WasmRefFuncParams ref_func;
         WasmSelectParams select;
         WasmVarParams var;
+        WasmTableParams table;
+        WasmTableCopyParams table_copy;
+        WasmTableInitParams table_init;
+        WasmElemDropParams elem_drop;
     } params;
 } WasmInstruction;
 
