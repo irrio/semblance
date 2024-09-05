@@ -154,6 +154,15 @@ typedef struct {
     wasm_data_idx_t dataidx;
 } WasmMemoryInitParams;
 
+typedef struct {
+    union {
+        int32_t i32;
+        int64_t i64;
+        float f32;
+        double f64;
+    } value;
+} WasmConstParams;
+
 typedef enum {
     WasmOpUnreachable,
     WasmOpNop,
@@ -215,6 +224,158 @@ typedef enum {
     WasmOpDataDrop,
     WasmOpMemoryCopy,
     WasmOpMemoryFill,
+
+    WasmOpI32Const,
+    WasmOpI64Const,
+    WasmOpF32Const,
+    WasmOpF64Const,
+
+    WasmOpI32EqZ,
+    WasmOpI32Eq,
+    WasmOpI32Neq,
+    WasmOpI32Lt_s,
+    WasmOpI32Lt_u,
+    WasmOpI32Gt_s,
+    WasmOpI32Gt_u,
+    WasmOpI32Le_s,
+    WasmOpI32Le_u,
+    WasmOpI32Ge_s,
+    WasmOpI32Ge_u,
+
+    WasmOpI64EqZ,
+    WasmOpI64Eq,
+    WasmOpI64Neq,
+    WasmOpI64Lt_s,
+    WasmOpI64Lt_u,
+    WasmOpI64Gt_s,
+    WasmOpI64Gt_u,
+    WasmOpI64Le_s,
+    WasmOpI64Le_u,
+    WasmOpI64Ge_s,
+    WasmOpI64Ge_u,
+
+    WasmOpF32Eq,
+    WasmOpF32Neq,
+    WasmOpF32Lt,
+    WasmOpF32Gt,
+    WasmOpF32Le,
+    WasmOpF32Ge,
+
+    WasmOpF64Eq,
+    WasmOpF64Neq,
+    WasmOpF64Lt,
+    WasmOpF64Gt,
+    WasmOpF64Le,
+    WasmOpF64Ge,
+
+    WasmOpI32Clz,
+    WasmOpI32Ctz,
+    WasmOpI32Popcnt,
+    WasmOpI32Add,
+    WasmOpI32Sub,
+    WasmOpI32Mul,
+    WasmOpI32Div_s,
+    WasmOpI32Div_u,
+    WasmOpI32Rem_s,
+    WasmOpI32Rem_u,
+    WasmOpI32And,
+    WasmOpI32Or,
+    WasmOpI32Xor,
+    WasmOpI32Shl,
+    WasmOpI32Shr_s,
+    WasmOpI32Shr_u,
+    WasmOpI32Rotl,
+    WasmOpI32Rotr,
+
+    WasmOpI64Clz,
+    WasmOpI64Ctz,
+    WasmOpI64Popcnt,
+    WasmOpI64Add,
+    WasmOpI64Sub,
+    WasmOpI64Mul,
+    WasmOpI64Div_s,
+    WasmOpI64Div_u,
+    WasmOpI64Rem_s,
+    WasmOpI64Rem_u,
+    WasmOpI64And,
+    WasmOpI64Or,
+    WasmOpI64Xor,
+    WasmOpI64Shl,
+    WasmOpI64Shr_s,
+    WasmOpI64Shr_u,
+    WasmOpI64Rotl,
+    WasmOpI64Rotr,
+
+    WasmOpF32Abs,
+    WasmOpF32Neg,
+    WasmOpF32Ceil,
+    WasmOpF32Floor,
+    WasmOpF32Trunc,
+    WasmOpF32Nearest,
+    WasmOpF32Sqrt,
+    WasmOpF32Add,
+    WasmOpF32Sub,
+    WasmOpF32Mul,
+    WasmOpF32Div,
+    WasmOpF32Min,
+    WasmOpF32Max,
+    WasmOpF32CopySign,
+
+    WasmOpF64Abs,
+    WasmOpF64Neg,
+    WasmOpF64Ceil,
+    WasmOpF64Floor,
+    WasmOpF64Trunc,
+    WasmOpF64Nearest,
+    WasmOpF64Sqrt,
+    WasmOpF64Add,
+    WasmOpF64Sub,
+    WasmOpF64Mul,
+    WasmOpF64Div,
+    WasmOpF64Min,
+    WasmOpF64Max,
+    WasmOpF64CopySign,
+
+    WasmOpI32WrapI64,
+    WasmOpI32TruncF32_s,
+    WasmOpI32TruncF32_u,
+    WasmOpI32TruncF64_s,
+    WasmOpI32TruncF64_u,
+    WasmOpI64ExtendI32_s,
+    WasmOpI64ExtendI32_u,
+    WasmOpI64TruncF32_s,
+    WasmOpI64TruncF32_u,
+    WasmOpI64TruncF64_s,
+    WasmOpI64TruncF64_u,
+    WasmOpF32ConvertI32_s,
+    WasmOpF32ConvertI32_u,
+    WasmOpF32ConvertI64_s,
+    WasmOpF32ConvertI64_u,
+    WasmOpF32DemoteF64,
+    WasmOpF64ConvertI32_s,
+    WasmOpF64ConvertI32_U,
+    WasmOpF64ConvertI64_s,
+    WasmOpF64ConvertI64_u,
+    WasmOpF64PromoteF32,
+    WasmOpI32ReinterpretF32,
+    WasmOpI64ReinterpretF64,
+    WasmOpF32ReinterpretI32,
+    WasmOpF64ReinterpretI64,
+
+    WasmOpI32Extend8_s,
+    WasmOpI32Extend16_s,
+    WasmOpI64Extend8_s,
+    WasmOpI64Extend16_s,
+    WasmOpI64Extend32_s,
+
+    WasmOpI32TruncSatF32_s,
+    WasmOpI32TruncSatF32_u,
+    WasmOpI32TruncSatF64_s,
+    WasmOpI32TruncSatF64_u,
+    WasmOpI64TruncSatF32_s,
+    WasmOpI64TruncSatF32_u,
+    WasmOpI64TruncSatF64_s,
+    WasmOpI64TruncSatF64_u,
 } WasmOpcode;
 
 typedef struct {
@@ -236,6 +397,7 @@ typedef struct {
         WasmElemDropParams elem_drop;
         WasmMemArg memarg;
         WasmMemoryInitParams mem_init;
+        WasmConstParams _const;
     } params;
 } WasmInstruction;
 
