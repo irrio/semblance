@@ -561,6 +561,22 @@ WasmDecodeResult wbin_decode_memarg(void *data, WasmMemArg *memarg) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_i32(void *data, int32_t *out) {
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_i64(void *data, int64_t *out) {
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_f32(void *data, float *out) {
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_f64(void *data, double *out) {
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
     u_int8_t tag;
     data = wbin_take_byte(data, &tag);
@@ -716,6 +732,18 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0x40:
             wmod_instr_init(ins, WasmOpMemoryGrow);
             return wbin_decode_zero(data);
+        case 0x41:
+            wmod_instr_init(ins, WasmOpI32Const);
+            return wbin_decode_i32(data, &ins->params._const.value.i32);
+        case 0x42:
+            wmod_instr_init(ins, WasmOpI64Const);
+            return wbin_decode_i64(data, &ins->params._const.value.i64);
+        case 0x43:
+            wmod_instr_init(ins, WasmOpF32Const);
+            return wbin_decode_f32(data, &ins->params._const.value.f32);
+        case 0x44:
+            wmod_instr_init(ins, WasmOpF64Const);
+            return wbin_decode_f64(data, &ins->params._const.value.f64);
         // END
         case 0xFC:
             return wbin_decode_extended_instr(data, ins);
