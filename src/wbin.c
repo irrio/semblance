@@ -40,12 +40,13 @@ void *wbin_take_byte(void *data, u_int8_t *out) {
     return bytes + 1;
 }
 
-void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
+void *wbin_decode_leb128_64(void *data, u_int64_t *out) {
+    u_int8_t *bytes = data;
     u_int32_t shift = 0;
     size_t byte_idx = 0;
     *out = 0;
     while (true) {
-        u_int8_t byte = data[byte_idx];
+        u_int8_t byte = bytes[byte_idx];
         *out |= (byte & ~(1 << 7)) << shift;
         if ((byte & (1 << 7)) == 0) {
             break;
@@ -56,17 +57,17 @@ void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
     return data + byte_idx + 1;
 }
 
-void *wbin_decode_leb128_signed(u_leb128_prefixed data, u_int32_t *out) {
+void *wbin_decode_leb128_signed_64(u_leb128_prefixed data, int64_t *out) {
     int64_t result = 0;
     u_int32_t shift = 0;
 
     size_t idx = 0;
     u_int8_t byte = data[idx];
     do {
-      byte = data[idx];
-      result |= (byte & ~(1 << 7)) << shift;
-      shift += 7;
-      idx++;
+        byte = data[idx];
+        result |= (byte & ~(1 << 7)) << shift;
+        shift += 7;
+        idx++;
     } while ((byte & (1 << 7)) != 0);
 
     if ((shift < 64) && ((byte & 0x40) == 1)) {
@@ -76,6 +77,27 @@ void *wbin_decode_leb128_signed(u_leb128_prefixed data, u_int32_t *out) {
     *out = result;
 
     return data + idx + 1;
+}
+
+void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
+    u_int64_t full;
+    data = wbin_decode_leb128_64(data, &full);
+    *out = full;
+    return data;
+}
+
+void *wbin_decode_leb128_signed(u_leb128_prefixed data, int32_t *out) {
+    int64_t full;
+    data = wbin_decode_leb128_signed_64(data, &full);
+    *out = full;
+    return data;
+}
+
+void *wbin_decode_leb128_signed_tag(void *data, u_int32_t *out) {
+    int64_t full;
+    data = wbin_decode_leb128_signed_64(data, &full);
+    *out = full;
+    return data;
 }
 
 WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
@@ -407,7 +429,7 @@ WasmDecodeResult wbin_decode_blocktype(void *data, WasmBlockType *blocktype) {
     if (!wbin_is_err(val_result, WasmDecodeErrInvalidType)) return val_result;
 
     blocktype->kind = WasmBlockTypeIdx;
-    data = wbin_decode_leb128_signed(data, &blocktype->value.typeidx);
+    data = wbin_decode_leb128_signed_tag(data, &blocktype->value.typeidx);
 
     return wbin_ok(data);
 }
@@ -562,19 +584,21 @@ WasmDecodeResult wbin_decode_memarg(void *data, WasmMemArg *memarg) {
 }
 
 WasmDecodeResult wbin_decode_i32(void *data, int32_t *out) {
-    return wbin_ok(data);
+    return wbin_ok(wbin_decode_leb128_signed(data, out));
 }
 
 WasmDecodeResult wbin_decode_i64(void *data, int64_t *out) {
-    return wbin_ok(data);
+    return wbin_ok(wbin_decode_leb128_signed_64(data, out));
 }
 
 WasmDecodeResult wbin_decode_f32(void *data, float *out) {
-    return wbin_ok(data);
+    *out = *(float*)data;
+    return wbin_ok(data + sizeof(float));
 }
 
 WasmDecodeResult wbin_decode_f64(void *data, double *out) {
-    return wbin_ok(data);
+    *out = *(double*)data;
+    return wbin_ok(data + sizeof(double));
 }
 
 WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
