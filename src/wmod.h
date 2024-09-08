@@ -353,7 +353,7 @@ typedef enum {
     WasmOpF32ConvertI64_u,
     WasmOpF32DemoteF64,
     WasmOpF64ConvertI32_s,
-    WasmOpF64ConvertI32_U,
+    WasmOpF64ConvertI32_u,
     WasmOpF64ConvertI64_s,
     WasmOpF64ConvertI64_u,
     WasmOpF64PromoteF32,

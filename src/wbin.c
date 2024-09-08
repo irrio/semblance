@@ -530,6 +530,30 @@ WasmDecodeResult wbin_decode_extended_instr(void *data, WasmInstruction *ins) {
     data = wbin_decode_leb128(data, &tag);
 
     switch (tag) {
+        case 0:
+            wmod_instr_init(ins, WasmOpI32TruncSatF32_s);
+            break;
+        case 1:
+            wmod_instr_init(ins, WasmOpI32TruncSatF32_u);
+            break;
+        case 2:
+            wmod_instr_init(ins, WasmOpI32TruncSatF64_s);
+            break;
+        case 3:
+            wmod_instr_init(ins, WasmOpI32TruncSatF64_u);
+            break;
+        case 4:
+            wmod_instr_init(ins, WasmOpI64TruncSatF32_s);
+            break;
+        case 5:
+            wmod_instr_init(ins, WasmOpI64TruncSatF32_u);
+            break;
+        case 6:
+            wmod_instr_init(ins, WasmOpI64TruncSatF64_s);
+            break;
+        case 7:
+            wmod_instr_init(ins, WasmOpI64TruncSatF64_u);
+            break;
         case 8:
             wmod_instr_init(ins, WasmOpMemoryInit);
             data = wbin_decode_leb128(data, &ins->params.mem_init.dataidx);
@@ -768,6 +792,390 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         case 0x44:
             wmod_instr_init(ins, WasmOpF64Const);
             return wbin_decode_f64(data, &ins->params._const.value.f64);
+        case 0x45:
+            wmod_instr_init(ins, WasmOpI32EqZ);
+            break;
+        case 0x46:
+            wmod_instr_init(ins, WasmOpI32Eq);
+            break;
+        case 0x47:
+            wmod_instr_init(ins, WasmOpI32Neq);
+            break;
+        case 0x48:
+            wmod_instr_init(ins, WasmOpI32Lt_s);
+            break;
+        case 0x49:
+            wmod_instr_init(ins, WasmOpI32Lt_u);
+            break;
+        case 0x4A:
+            wmod_instr_init(ins, WasmOpI32Gt_s);
+            break;
+        case 0x4B:
+            wmod_instr_init(ins, WasmOpI32Gt_u);
+            break;
+        case 0x4C:
+            wmod_instr_init(ins, WasmOpI32Le_s);
+            break;
+        case 0x4D:
+            wmod_instr_init(ins, WasmOpI32Le_u);
+            break;
+        case 0x4E:
+            wmod_instr_init(ins, WasmOpI32Ge_s);
+            break;
+        case 0x4F:
+            wmod_instr_init(ins, WasmOpI32Ge_u);
+            break;
+        case 0x50:
+            wmod_instr_init(ins, WasmOpI64EqZ);
+            break;
+        case 0x51:
+            wmod_instr_init(ins, WasmOpI64Eq);
+            break;
+        case 0x52:
+            wmod_instr_init(ins, WasmOpI64Neq);
+            break;
+        case 0x53:
+            wmod_instr_init(ins, WasmOpI64Lt_s);
+            break;
+        case 0x54:
+            wmod_instr_init(ins, WasmOpI64Lt_u);
+            break;
+        case 0x55:
+            wmod_instr_init(ins, WasmOpI64Gt_s);
+            break;
+        case 0x56:
+            wmod_instr_init(ins, WasmOpI64Gt_u);
+            break;
+        case 0x57:
+            wmod_instr_init(ins, WasmOpI64Le_s);
+            break;
+        case 0x58:
+            wmod_instr_init(ins, WasmOpI64Le_u);
+            break;
+        case 0x59:
+            wmod_instr_init(ins, WasmOpI64Ge_s);
+            break;
+        case 0x5A:
+            wmod_instr_init(ins, WasmOpI64Ge_u);
+            break;
+        case 0x5B:
+            wmod_instr_init(ins, WasmOpF32Eq);
+            break;
+        case 0x5C:
+            wmod_instr_init(ins, WasmOpF32Neq);
+            break;
+        case 0x5D:
+            wmod_instr_init(ins, WasmOpF32Lt);
+            break;
+        case 0x5E:
+            wmod_instr_init(ins, WasmOpF32Gt);
+            break;
+        case 0x5F:
+            wmod_instr_init(ins, WasmOpF32Le);
+            break;
+        case 0x60:
+            wmod_instr_init(ins, WasmOpF32Ge);
+            break;
+        case 0x61:
+            wmod_instr_init(ins, WasmOpF64Eq);
+            break;
+        case 0x62:
+            wmod_instr_init(ins, WasmOpF64Neq);
+            break;
+        case 0x63:
+            wmod_instr_init(ins, WasmOpF64Lt);
+            break;
+        case 0x64:
+            wmod_instr_init(ins, WasmOpF64Gt);
+            break;
+        case 0x65:
+            wmod_instr_init(ins, WasmOpF64Le);
+            break;
+        case 0x66:
+            wmod_instr_init(ins, WasmOpF64Ge);
+            break;
+        case 0x67:
+            wmod_instr_init(ins, WasmOpI32Clz);
+            break;
+        case 0x68:
+            wmod_instr_init(ins, WasmOpI32Ctz);
+            break;
+        case 0x69:
+            wmod_instr_init(ins, WasmOpI32Popcnt);
+            break;
+        case 0x6A:
+            wmod_instr_init(ins, WasmOpI32Add);
+            break;
+        case 0x6B:
+            wmod_instr_init(ins, WasmOpI32Sub);
+            break;
+        case 0x6C:
+            wmod_instr_init(ins, WasmOpI32Mul);
+            break;
+        case 0x6D:
+            wmod_instr_init(ins, WasmOpI32Div_s);
+            break;
+        case 0x6E:
+            wmod_instr_init(ins, WasmOpI32Div_u);
+            break;
+        case 0x6F:
+            wmod_instr_init(ins, WasmOpI32Rem_s);
+            break;
+        case 0x70:
+            wmod_instr_init(ins, WasmOpI32Rem_u);
+            break;
+        case 0x71:
+            wmod_instr_init(ins, WasmOpI32And);
+            break;
+        case 0x72:
+            wmod_instr_init(ins, WasmOpI32Or);
+            break;
+        case 0x73:
+            wmod_instr_init(ins, WasmOpI32Xor);
+            break;
+        case 0x74:
+            wmod_instr_init(ins, WasmOpI32Shl);
+            break;
+        case 0x75:
+            wmod_instr_init(ins, WasmOpI32Shr_s);
+            break;
+        case 0x76:
+            wmod_instr_init(ins, WasmOpI32Shr_u);
+            break;
+        case 0x77:
+            wmod_instr_init(ins, WasmOpI32Rotl);
+            break;
+        case 0x78:
+            wmod_instr_init(ins, WasmOpI32Rotr);
+            break;
+        case 0x79:
+            wmod_instr_init(ins, WasmOpI64Clz);
+            break;
+        case 0x7A:
+            wmod_instr_init(ins, WasmOpI64Ctz);
+            break;
+        case 0x7B:
+            wmod_instr_init(ins, WasmOpI64Popcnt);
+            break;
+        case 0x7C:
+            wmod_instr_init(ins, WasmOpI64Add);
+            break;
+        case 0x7D:
+            wmod_instr_init(ins, WasmOpI64Sub);
+            break;
+        case 0x7E:
+            wmod_instr_init(ins, WasmOpI64Mul);
+            break;
+        case 0x7F:
+            wmod_instr_init(ins, WasmOpI64Div_s);
+            break;
+        case 0x80:
+            wmod_instr_init(ins, WasmOpI64Div_u);
+            break;
+        case 0x81:
+            wmod_instr_init(ins, WasmOpI64Rem_s);
+            break;
+        case 0x82:
+            wmod_instr_init(ins, WasmOpI64Rem_u);
+            break;
+        case 0x83:
+            wmod_instr_init(ins, WasmOpI64And);
+            break;
+        case 0x84:
+            wmod_instr_init(ins, WasmOpI64Or);
+            break;
+        case 0x85:
+            wmod_instr_init(ins, WasmOpI64Xor);
+            break;
+        case 0x86:
+            wmod_instr_init(ins, WasmOpI64Shl);
+            break;
+        case 0x87:
+            wmod_instr_init(ins, WasmOpI64Shr_s);
+            break;
+        case 0x88:
+            wmod_instr_init(ins, WasmOpI64Shr_u);
+            break;
+        case 0x89:
+            wmod_instr_init(ins, WasmOpI64Rotl);
+            break;
+        case 0x8A:
+            wmod_instr_init(ins, WasmOpI64Rotr);
+            break;
+        case 0x8B:
+            wmod_instr_init(ins, WasmOpF32Abs);
+            break;
+        case 0x8C:
+            wmod_instr_init(ins, WasmOpF32Neg);
+            break;
+        case 0x8D:
+            wmod_instr_init(ins, WasmOpF32Ceil);
+            break;
+        case 0x8E:
+            wmod_instr_init(ins, WasmOpF32Floor);
+            break;
+        case 0x8F:
+            wmod_instr_init(ins, WasmOpF32Trunc);
+            break;
+        case 0x90:
+            wmod_instr_init(ins, WasmOpF32Nearest);
+            break;
+        case 0x91:
+            wmod_instr_init(ins, WasmOpF32Sqrt);
+            break;
+        case 0x92:
+            wmod_instr_init(ins, WasmOpF32Add);
+            break;
+        case 0x93:
+            wmod_instr_init(ins, WasmOpF32Sub);
+            break;
+        case 0x94:
+            wmod_instr_init(ins, WasmOpF32Mul);
+            break;
+        case 0x95:
+            wmod_instr_init(ins, WasmOpF32Div);
+            break;
+        case 0x96:
+            wmod_instr_init(ins, WasmOpF32Min);
+            break;
+        case 0x97:
+            wmod_instr_init(ins, WasmOpF32Max);
+            break;
+        case 0x98:
+            wmod_instr_init(ins, WasmOpF32CopySign);
+            break;
+        case 0x99:
+            wmod_instr_init(ins, WasmOpF64Abs);
+            break;
+        case 0x9A:
+            wmod_instr_init(ins, WasmOpF64Neg);
+            break;
+        case 0x9B:
+            wmod_instr_init(ins, WasmOpF64Ceil);
+            break;
+        case 0x9C:
+            wmod_instr_init(ins, WasmOpF64Floor);
+            break;
+        case 0x9D:
+            wmod_instr_init(ins, WasmOpF64Trunc);
+            break;
+        case 0x9E:
+            wmod_instr_init(ins, WasmOpF64Nearest);
+            break;
+        case 0x9F:
+            wmod_instr_init(ins, WasmOpF64Sqrt);
+            break;
+        case 0xA0:
+            wmod_instr_init(ins, WasmOpF64Add);
+            break;
+        case 0xA1:
+            wmod_instr_init(ins, WasmOpF64Sub);
+            break;
+        case 0xA2:
+            wmod_instr_init(ins, WasmOpF64Mul);
+            break;
+        case 0xA3:
+            wmod_instr_init(ins, WasmOpF64Div);
+            break;
+        case 0xA4:
+            wmod_instr_init(ins, WasmOpF64Min);
+            break;
+        case 0xA5:
+            wmod_instr_init(ins, WasmOpF64Max);
+            break;
+        case 0xA6:
+            wmod_instr_init(ins, WasmOpF64CopySign);
+            break;
+        case 0xA7:
+            wmod_instr_init(ins, WasmOpI32WrapI64);
+            break;
+        case 0xA8:
+            wmod_instr_init(ins, WasmOpI32TruncF32_s);
+            break;
+        case 0xA9:
+            wmod_instr_init(ins, WasmOpI32TruncF32_u);
+            break;
+        case 0xAA:
+            wmod_instr_init(ins, WasmOpI32TruncF64_s);
+            break;
+        case 0xAB:
+            wmod_instr_init(ins, WasmOpI32TruncF64_u);
+            break;
+        case 0xAC:
+            wmod_instr_init(ins, WasmOpI64ExtendI32_s);
+            break;
+        case 0xAD:
+            wmod_instr_init(ins, WasmOpI64ExtendI32_u);
+            break;
+        case 0xAE:
+            wmod_instr_init(ins, WasmOpI64TruncF32_s);
+            break;
+        case 0xAF:
+            wmod_instr_init(ins, WasmOpI64TruncF32_u);
+            break;
+        case 0xB0:
+            wmod_instr_init(ins, WasmOpI64TruncF64_s);
+            break;
+        case 0xB1:
+            wmod_instr_init(ins, WasmOpI64TruncF64_u);
+            break;
+        case 0xB2:
+            wmod_instr_init(ins, WasmOpF32ConvertI32_s);
+            break;
+        case 0xB3:
+            wmod_instr_init(ins, WasmOpF32ConvertI32_u);
+            break;
+        case 0xB4:
+            wmod_instr_init(ins, WasmOpF32ConvertI64_s);
+            break;
+        case 0xB5:
+            wmod_instr_init(ins, WasmOpF32ConvertI64_u);
+            break;
+        case 0xB6:
+            wmod_instr_init(ins, WasmOpF32DemoteF64);
+            break;
+        case 0xB7:
+            wmod_instr_init(ins, WasmOpF64ConvertI32_s);
+            break;
+        case 0xB8:
+            wmod_instr_init(ins, WasmOpF64ConvertI32_u);
+            break;
+        case 0xB9:
+            wmod_instr_init(ins, WasmOpF64ConvertI64_s);
+            break;
+        case 0xBA:
+            wmod_instr_init(ins, WasmOpF32ConvertI64_u);
+            break;
+        case 0xBB:
+            wmod_instr_init(ins, WasmOpF64PromoteF32);
+            break;
+        case 0xBC:
+            wmod_instr_init(ins, WasmOpI32ReinterpretF32);
+            break;
+        case 0xBD:
+            wmod_instr_init(ins, WasmOpI64ReinterpretF64);
+            break;
+        case 0xBE:
+            wmod_instr_init(ins, WasmOpF32ReinterpretI32);
+            break;
+        case 0xBF:
+            wmod_instr_init(ins, WasmOpF64ReinterpretI64);
+            break;
+        case 0xC0:
+            wmod_instr_init(ins, WasmOpI32Extend8_s);
+            break;
+        case 0xC1:
+            wmod_instr_init(ins, WasmOpI32Extend16_s);
+            break;
+        case 0xC2:
+            wmod_instr_init(ins, WasmOpI64Extend8_s);
+            break;
+        case 0xC3:
+            wmod_instr_init(ins, WasmOpI64Extend16_s);
+            break;
+        case 0xC4:
+            wmod_instr_init(ins, WasmOpI64Extend32_s);
+            break;
         // END
         case 0xFC:
             return wbin_decode_extended_instr(data, ins);
