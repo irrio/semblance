@@ -1179,10 +1179,11 @@ WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
         // END
         case 0xFC:
             return wbin_decode_extended_instr(data, ins);
-        default:
         case 0x0B:
             wmod_instr_init(ins, WasmOpExprEnd);
             break;
+        default:
+            return wbin_err(WasmDecodeErrUnknownOpcode, tag);
     }
 
     return wbin_ok(data);
@@ -1329,6 +1330,8 @@ char *wbin_explain_error_code(WasmDecodeResult result) {
             return "unknown table instruction";
         case WasmDecodeErrExpectedZero:
             return "expected zero bytes";
+        case WasmDecodeErrUnknownOpcode:
+            return "unknown opcode";
         default:
             return "unknown error code";
     }
@@ -1338,6 +1341,8 @@ char *wbin_explain_error_cause(WasmDecodeResult result) {
     switch (result.value.error.code) {
         case WasmDecodeErrIo:
             return strerror(result.value.error.cause);
+        case WasmDecodeErrUnknownOpcode:
+            return "...";
         default:
             return "";
     }
@@ -1353,5 +1358,11 @@ bool wbin_is_err(WasmDecodeResult result, WasmDecodeErrorCode code) {
 }
 
 bool wbin_error_has_cause(WasmDecodeResult result) {
-    return result.state == WasmDecodeErrIo;
+    switch (result.value.error.code) {
+        case WasmDecodeErrIo:
+        case WasmDecodeErrUnknownOpcode:
+            return true;
+        default:
+            return false;
+    }
 }
