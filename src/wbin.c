@@ -76,7 +76,7 @@ void *wbin_decode_leb128_signed_64(u_leb128_prefixed data, int64_t *out) {
 
     *out = result;
 
-    return data + idx + 1;
+    return data + idx;
 }
 
 void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
@@ -295,7 +295,7 @@ WasmDecodeResult wbin_decode_global_mutability(void *data, WasmGlobalMutability 
     return wbin_ok(data);
 }
 
-WasmDecodeResult wbin_decode_global(void *data, WasmGlobalType *global) {
+WasmDecodeResult wbin_decode_global_type(void *data, WasmGlobalType *global) {
     WasmDecodeResult val_result = wbin_decode_val_type(data, &global->valtype);
     if (!wbin_is_ok(val_result)) return val_result;
     data = val_result.value.next_data;
@@ -317,7 +317,7 @@ WasmDecodeResult wbin_decode_import_desc(void *data, WasmImportDesc *desc) {
             return wbin_decode_mem(data, &desc->value.mem);
         case 0x03:
             desc->kind = WasmImportGlobal;
-            return wbin_decode_global(data, &desc->value.global);
+            return wbin_decode_global_type(data, &desc->value.global);
         default:
             return wbin_err(WasmDecodeErrInvalidImport, 0);
     }
@@ -1231,6 +1231,29 @@ WasmDecodeResult wbin_decode_codes(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_global(void *data, WasmGlobal *global) {
+    WasmDecodeResult result = wbin_decode_global_type(data, &global->globaltype);
+    if (!wbin_is_ok(result)) return result;
+    data = result.value.next_data;
+    return wbin_decode_expr(data, &global->init);
+}
+
+WasmDecodeResult wbin_decode_globals(void *data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len-- > 0) {
+        WasmGlobal global;
+        wmod_global_init(&global);
+        WasmDecodeResult result = wbin_decode_global(data, &global);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        wmod_push_back_global(wmod, &global);
+    }
+
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     switch (id) {
         case SectionIdType:
@@ -1249,11 +1272,12 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_start(section, wmod);
         case SectionIdCode:
             return wbin_decode_codes(section, wmod);
-        case SectionIdCustom:
         case SectionIdGlobal:
+            return wbin_decode_globals(section, wmod);
         case SectionIdElement:
         case SectionIdData:
         case SectionIdDataCount:
+        case SectionIdCustom:
             return wbin_ok(section);
         default:
             return wbin_err(WasmDecodeErrUnknownSectionId, id);

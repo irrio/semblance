@@ -138,6 +138,12 @@ void wmod_dump_global_mutability(WasmGlobalMutability mut) {
     }
 }
 
+void wmod_dump_global_type(WasmGlobalType *globaltype) {
+    wmod_dump_global_mutability(globaltype->mut);
+    printf(" ");
+    wmod_dump_val_type(&globaltype->valtype);
+}
+
 void wmod_dump_import_desc(WasmImportDesc *desc) {
     switch (desc->kind) {
         case WasmImportFunc:
@@ -153,9 +159,7 @@ void wmod_dump_import_desc(WasmImportDesc *desc) {
             break;
         case WasmImportGlobal:
             printf("global ");
-            wmod_dump_global_mutability(desc->value.global.mut);
-            printf(" ");
-            wmod_dump_val_type(&desc->value.global.valtype);
+            wmod_dump_global_type(&desc->value.global);
             break;
     }
 }
@@ -213,12 +217,29 @@ void wmod_dump_start(WasmStart *start) {
     }
 }
 
+void wmod_dump_global(WasmGlobal *global) {
+    wmod_dump_global_type(&global->globaltype);
+    printf(" ");
+    printf("expr(%zu)", global->init.len);
+}
+
+void wmod_dump_globals(WasmGlobals *globals) {
+    WasmGlobal *data = globals->ptr;
+    for (size_t i = 0; i < globals->len; i++) {
+        printf("<g%zu> ", i);
+        wmod_dump_global(&data[i]);
+        printf("\n");
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
     wmod_dump_types(&wmod->types);
     printf("-------funcs: %zu-------\n", wmod->funcs.len);
     wmod_dump_funcs(&wmod->funcs);
+    printf("-------globals: %zu-------\n", wmod->globals.len);
+    wmod_dump_globals(&wmod->globals);
     printf("-------tables: %zu-------\n", wmod->tables.len);
     wmod_dump_tables(&wmod->tables);
     printf("-------mems: %zu-------\n", wmod->mems.len);
@@ -247,6 +268,10 @@ void wmod_func_init(WasmFunc *func) {
     vec_init(&func->body);
 }
 
+void wmod_global_init(WasmGlobal *global) {
+    vec_init(&global->init);
+}
+
 void wmod_import_init(WasmImport *import) {
     wmod_name_init(&import->module_name);
     wmod_name_init(&import->item_name);
@@ -266,6 +291,10 @@ wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type) {
 
 wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func) {
     return vec_push_back(&wmod->funcs, sizeof(WasmFunc), func);
+}
+
+wasm_global_idx_t wmod_push_back_global(WasmModule *wmod, WasmGlobal *global) {
+    return vec_push_back(&wmod->globals, sizeof(WasmGlobal), global);
 }
 
 wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table) {

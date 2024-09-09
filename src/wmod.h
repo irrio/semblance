@@ -462,7 +462,12 @@ typedef struct {
 
 typedef VEC(WasmImport) WasmImports;
 
-typedef Vec WasmGlobals;
+typedef struct {
+    WasmGlobalType globaltype;
+    WasmExpr init;
+} WasmGlobal;
+
+typedef VEC(WasmGlobal) WasmGlobals;
 
 typedef Vec WasmElems;
 typedef Vec WasmDatas;
@@ -523,6 +528,7 @@ void wmod_dump(WasmModule *wmod);
 void wmod_name_init(WasmName *name);
 void wmod_func_type_init(WasmFuncType *type);
 void wmod_func_init(WasmFunc *func);
+void wmod_global_init(WasmGlobal *global);
 void wmod_import_init(WasmImport *import);
 void wmod_export_init(WasmExport *exp);
 
@@ -530,6 +536,7 @@ size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype);
 
 wasm_type_idx_t wmod_push_back_type(WasmModule *wmod, WasmFuncType *type);
 wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func);
+wasm_global_idx_t wmod_push_back_global(WasmModule *wmod, WasmGlobal *global);
 wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table);
 wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem);
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import);
