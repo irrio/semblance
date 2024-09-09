@@ -232,6 +232,37 @@ void wmod_dump_globals(WasmGlobals *globals) {
     }
 }
 
+void wmod_dump_datamode(WasmDataMode *datamode) {
+    switch (datamode->kind) {
+        case WasmDataModeActive:
+            printf(
+                "active <m%d> expr(%zu)",
+                datamode->value.active.memidx,
+                datamode->value.active.offset_expr.len
+            );
+            break;
+        case WasmDataModePassive:
+            printf("passive");
+            break;
+        default:
+            printf("unknown");
+    }
+}
+
+void wmod_dump_data(WasmData *data) {
+    printf("bytes(%d) ", data->len);
+    wmod_dump_datamode(&data->datamode);
+}
+
+void wmod_dump_datas(WasmDatas *datas) {
+    WasmData *data = datas->ptr;
+    for (size_t i = 0; i < datas->len; i++) {
+        printf("<d%zu> ", i);
+        wmod_dump_data(&data[i]);
+        printf("\n");
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("-------types: %zu-------\n", wmod->types.len);
@@ -248,6 +279,8 @@ void wmod_dump(WasmModule *wmod) {
     wmod_dump_imports(&wmod->imports);
     printf("-------exports: %zu-------\n", wmod->exports.len);
     wmod_dump_exports(&wmod->exports);
+    printf("-------datas: %zu-------\n", wmod->datas.len);
+    wmod_dump_datas(&wmod->datas);
     printf("-------start: %d-------\n", wmod->start.present);
     wmod_dump_start(&wmod->start);
 }
@@ -281,6 +314,10 @@ void wmod_export_init(WasmExport *exp) {
     wmod_name_init(&exp->name);
 }
 
+void wmod_data_init(WasmData *data) {
+    vec_init(&data->datamode.value.active.offset_expr);
+}
+
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype) {
     return vec_push_back(type, sizeof(WasmValueType), valtype);
 }
@@ -303,6 +340,10 @@ wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table) {
 
 wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem) {
     return vec_push_back(&wmod->mems, sizeof(WasmMemType), mem);
+}
+
+wasm_data_idx_t wmod_push_back_data(WasmModule *wmod, WasmData *data) {
+    return vec_push_back(&wmod->datas, sizeof(WasmData), data);
 }
 
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import) {

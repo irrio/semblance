@@ -470,7 +470,31 @@ typedef struct {
 typedef VEC(WasmGlobal) WasmGlobals;
 
 typedef Vec WasmElems;
-typedef Vec WasmDatas;
+
+typedef enum {
+    WasmDataModePassive,
+    WasmDataModeActive
+} WasmDataModeKind;
+
+typedef struct {
+    wasm_mem_idx_t memidx;
+    WasmExpr offset_expr;
+} WasmDataModeActiveParams;
+
+typedef struct {
+    WasmDataModeKind kind;
+    union {
+        WasmDataModeActiveParams active;
+    } value;
+} WasmDataMode;
+
+typedef struct {
+    u_int32_t len;
+    u_int8_t *bytes;
+    WasmDataMode datamode;
+} WasmData;
+
+typedef VEC(WasmData) WasmDatas;
 
 typedef struct {
     bool present;
@@ -531,6 +555,7 @@ void wmod_func_init(WasmFunc *func);
 void wmod_global_init(WasmGlobal *global);
 void wmod_import_init(WasmImport *import);
 void wmod_export_init(WasmExport *exp);
+void wmod_data_init(WasmData *data);
 
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype);
 
@@ -539,6 +564,7 @@ wasm_func_idx_t wmod_push_back_func(WasmModule *wmod, WasmFunc *func);
 wasm_global_idx_t wmod_push_back_global(WasmModule *wmod, WasmGlobal *global);
 wasm_table_idx_t wmod_push_back_table(WasmModule *wmod, WasmTable *table);
 wasm_mem_idx_t wmod_push_back_mem(WasmModule *wmod, WasmMemType *mem);
+wasm_data_idx_t wmod_push_back_data(WasmModule *wmod, WasmData *data);
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import);
 void wmod_push_back_export(WasmModule *wmod, WasmExport *exp);
 

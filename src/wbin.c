@@ -1254,6 +1254,58 @@ WasmDecodeResult wbin_decode_globals(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_data(void *data, WasmData *wdata) {
+    u_int32_t tag;
+    data = wbin_decode_leb128(data, &tag);
+
+    switch (tag) {
+        case 0:
+            wdata->datamode.kind = WasmDataModeActive;
+            wdata->datamode.value.active.memidx = 0;
+            WasmDecodeResult result = wbin_decode_expr(data, &wdata->datamode.value.active.offset_expr);
+            if (!wbin_is_ok(result)) return result;
+            data = result.value.next_data;
+            data = wbin_decode_leb128(data, &wdata->len);
+            wdata->bytes = data;
+            data += wdata->len;
+            break;
+        case 1:
+            wdata->datamode.kind = WasmDataModePassive;
+            data = wbin_decode_leb128(data, &wdata->len);
+            wdata->bytes = data;
+            data += wdata->len;
+            break;
+        case 2:
+            wdata->datamode.kind = WasmDataModeActive;
+            data = wbin_decode_leb128(data, &wdata->datamode.value.active.memidx);
+            WasmDecodeResult result2 = wbin_decode_expr(data, &wdata->datamode.value.active.offset_expr);
+            if (!wbin_is_ok(result2)) return result2;
+            data = result2.value.next_data;
+            data = wbin_decode_leb128(data, &wdata->len);
+            wdata->bytes = data;
+            data += wdata->len;
+            break;
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_datas(void *data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len-- > 0) {
+        WasmData wdata;
+        wmod_data_init(&wdata);
+        WasmDecodeResult result = wbin_decode_data(data, &wdata);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        wmod_push_back_data(wmod, &wdata);
+    }
+
+    return wbin_ok(data);
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     switch (id) {
         case SectionIdType:
@@ -1274,9 +1326,10 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
             return wbin_decode_codes(section, wmod);
         case SectionIdGlobal:
             return wbin_decode_globals(section, wmod);
-        case SectionIdElement:
         case SectionIdData:
+            return wbin_decode_datas(section, wmod);
         case SectionIdDataCount:
+        case SectionIdElement:
         case SectionIdCustom:
             return wbin_ok(section);
         default:
