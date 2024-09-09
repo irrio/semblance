@@ -15,6 +15,7 @@ void wmod_init(WasmModule *wmod) {
     vec_init(&wmod->exports);
     vec_init(&wmod->customs);
     wmod->meta.version = 0;
+    wmod->meta.datacount = 0;
     wmod->start.present = false;
     wmod->start.func_idx = 0;
 }
@@ -265,6 +266,7 @@ void wmod_dump_datas(WasmDatas *datas) {
 
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
+    printf("datacount: %d\n", wmod->meta.datacount);
     printf("-------types: %zu-------\n", wmod->types.len);
     wmod_dump_types(&wmod->types);
     printf("-------funcs: %zu-------\n", wmod->funcs.len);

@@ -1306,6 +1306,11 @@ WasmDecodeResult wbin_decode_datas(void *data, WasmModule *wmod) {
     return wbin_ok(data);
 }
 
+WasmDecodeResult wbin_decode_datacount(void *data, WasmModule *wmod) {
+    printf("Decode datacount\n");
+    return wbin_ok(wbin_decode_leb128(data, &wmod->meta.datacount));
+}
+
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
     switch (id) {
         case SectionIdType:
@@ -1329,6 +1334,7 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
         case SectionIdData:
             return wbin_decode_datas(section, wmod);
         case SectionIdDataCount:
+            return wbin_decode_datacount(section, wmod);
         case SectionIdElement:
         case SectionIdCustom:
             return wbin_ok(section);

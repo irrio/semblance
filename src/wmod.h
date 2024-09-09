@@ -529,6 +529,7 @@ typedef Vec WasmCustoms;
 
 typedef struct {
     u_int32_t version;
+    u_int32_t datacount;
 } WasmMeta;
 
 typedef struct {
