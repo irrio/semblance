@@ -264,6 +264,41 @@ void wmod_dump_datas(WasmDatas *datas) {
     }
 }
 
+void wmod_dump_elemmode(WasmElemMode *elemmode) {
+    switch (elemmode->kind) {
+        case WasmElemModeActive:
+            printf(
+                "active <t%d> offset(%zu)",
+                elemmode->value.active.tableidx,
+                elemmode->value.active.offset_expr.len
+            );
+            break;
+        case WasmElemModePassive:
+            printf("passive");
+            break;
+        case WasmElemModeDeclarative:
+            printf("declarative");
+            break;
+        default:
+            break;
+    }
+}
+
+void wmod_dump_elem(WasmElem *elem) {
+    printf("%s ", wmod_str_ref_type(elem->reftype));
+    printf("init(%zu) ", elem->init.len);
+    wmod_dump_elemmode(&elem->elemmode);
+}
+
+void wmod_dump_elems(WasmElems *elems) {
+    WasmElem *elem = elems->ptr;
+    for (size_t i = 0; i < elems->len; i++) {
+        printf("<e%zu> ", i);
+        wmod_dump_elem(&elem[i]);
+        printf("\n");
+    }
+}
+
 void wmod_dump(WasmModule *wmod) {
     printf("version: %d\n", wmod->meta.version);
     printf("datacount: %d\n", wmod->meta.datacount);
@@ -283,6 +318,8 @@ void wmod_dump(WasmModule *wmod) {
     wmod_dump_exports(&wmod->exports);
     printf("-------datas: %zu-------\n", wmod->datas.len);
     wmod_dump_datas(&wmod->datas);
+    printf("-------elems: %zu-------\n", wmod->elems.len);
+    wmod_dump_elems(&wmod->elems);
     printf("-------start: %d-------\n", wmod->start.present);
     wmod_dump_start(&wmod->start);
 }
@@ -320,6 +357,11 @@ void wmod_data_init(WasmData *data) {
     vec_init(&data->datamode.value.active.offset_expr);
 }
 
+void wmod_elem_init(WasmElem *elem) {
+    vec_init(&elem->init);
+    vec_init(&elem->elemmode.value.active.offset_expr);
+}
+
 size_t wmod_result_type_push_back(WasmResultType *type, WasmValueType *valtype) {
     return vec_push_back(type, sizeof(WasmValueType), valtype);
 }
@@ -348,6 +390,10 @@ wasm_data_idx_t wmod_push_back_data(WasmModule *wmod, WasmData *data) {
     return vec_push_back(&wmod->datas, sizeof(WasmData), data);
 }
 
+wasm_elem_idx_t wmod_push_back_elem(WasmModule *wmod, WasmElem *elem) {
+    return vec_push_back(&wmod->elems, sizeof(WasmElem), elem);
+}
+
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import) {
     vec_push_back(&wmod->imports, sizeof(WasmImport), import);
 }
@@ -365,6 +411,10 @@ void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *valt
 
 void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins) {
     vec_push_back(expr, sizeof(WasmInstruction), ins);
+}
+
+void wmod_elem_push_back_expr(WasmElem *elem, WasmExpr *expr) {
+    vec_push_back(&elem->init, sizeof(WasmExpr), expr);
 }
 
 void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode) {
