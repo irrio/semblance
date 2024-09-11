@@ -12,6 +12,7 @@
     local.get 0
     return
   )
+  (elem funcref (item ref.func $two))
   (memory (;0;) 2)
   (global $__stack_pointer (;0;) (mut i32) i32.const 66560)
   (global (;1;) i32 i32.const 1024)
