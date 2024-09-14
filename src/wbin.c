@@ -1307,8 +1307,142 @@ WasmDecodeResult wbin_decode_datas(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_datacount(void *data, WasmModule *wmod) {
-    printf("Decode datacount\n");
     return wbin_ok(wbin_decode_leb128(data, &wmod->meta.datacount));
+}
+
+WasmDecodeResult wbin_decode_funcidx_refs(void *data, VEC(WasmExpr) *exprs) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len-- > 0) {
+        WasmExpr expr;
+        vec_init(&expr);
+
+        WasmInstruction instr;
+        instr.opcode = WasmOpRefFunc;
+        data = wbin_decode_leb128(data, &instr.params.ref_func.funcidx);
+        wmod_expr_push_back_instruction(&expr, &instr);
+
+        vec_push_back(exprs, sizeof(WasmExpr), &expr);
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_elemkind(void *data, WasmRefType *reftype) {
+    *reftype = WasmRefFunc;
+    return wbin_decode_zero(data);
+}
+
+WasmDecodeResult wbin_decode_exprs(void *data, VEC(WasmExpr) *exprs) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len-- > 0) {
+        WasmExpr expr;
+        vec_init(&expr);
+        WasmDecodeResult result = wbin_decode_expr(data, &expr);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        vec_push_back(exprs, sizeof(WasmExpr), &expr);
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_elem(void *data, WasmElem *elem) {
+    u_int32_t tag;
+    data = wbin_decode_leb128(data, &tag);
+
+    switch (tag) {
+        case 0: {
+            elem->elemmode.kind = WasmElemModeActive;
+            elem->reftype = WasmRefFunc;
+            elem->elemmode.value.active.tableidx = 0;
+            WasmDecodeResult result = wbin_decode_expr(data, &elem->elemmode.value.active.offset_expr);
+            if (!wbin_is_ok(result)) return result;
+            data = result.value.next_data;
+            return wbin_decode_funcidx_refs(data, &elem->init);
+        }
+        case 1: {
+            elem->elemmode.kind = WasmElemModePassive;
+            WasmDecodeResult kind_result = wbin_decode_elemkind(data, &elem->reftype);
+            if (!wbin_is_ok(kind_result)) return kind_result;
+            data = kind_result.value.next_data;
+            return wbin_decode_funcidx_refs(data, &elem->init);
+        }
+        case 2: {
+            elem->elemmode.kind = WasmElemModeActive;
+            data = wbin_decode_leb128(data, &elem->elemmode.value.active.tableidx);
+            WasmDecodeResult result = wbin_decode_expr(data, &elem->elemmode.value.active.offset_expr);
+            if (!wbin_is_ok(result)) return result;
+            data = result.value.next_data;
+            WasmDecodeResult kind_result = wbin_decode_elemkind(data, &elem->reftype);
+            if (!wbin_is_ok(kind_result)) return kind_result;
+            data = result.value.next_data;
+            return wbin_decode_funcidx_refs(data, &elem->init);
+        }
+        case 3: {
+            elem->elemmode.kind = WasmElemModeDeclarative;
+            WasmDecodeResult kind_result = wbin_decode_elemkind(data, &elem->reftype);
+            if (!wbin_is_ok(kind_result)) return kind_result;
+            return wbin_decode_funcidx_refs(data, &elem->init);
+        }
+        case 4: {
+            elem->elemmode.kind = WasmElemModeActive;
+            elem->elemmode.value.active.tableidx = 0;
+            elem->reftype = WasmRefFunc;
+            WasmDecodeResult offset_result = wbin_decode_expr(data, &elem->elemmode.value.active.offset_expr);
+            if (!wbin_is_ok(offset_result)) return offset_result;
+            data = offset_result.value.next_data;
+            return wbin_decode_exprs(data, &elem->init);
+        }
+        case 5: {
+            elem->elemmode.kind = WasmElemModePassive;
+            WasmDecodeResult ref_result = wbin_decode_reftype(data, &elem->reftype);
+            if (!wbin_is_ok(ref_result)) return ref_result;
+            data = ref_result.value.next_data;
+            return wbin_decode_exprs(data, &elem->init);
+        }
+        case 6: {
+            elem->elemmode.kind = WasmElemModeActive;
+            data = wbin_decode_leb128(data, &elem->elemmode.value.active.tableidx);
+            WasmDecodeResult offset_result = wbin_decode_expr(data, &elem->elemmode.value.active.offset_expr);
+            if (!wbin_is_ok(offset_result)) return offset_result;
+            data = offset_result.value.next_data;
+            WasmDecodeResult ref_result = wbin_decode_reftype(data, &elem->reftype);
+            if (!wbin_is_ok(ref_result)) return ref_result;
+            data = ref_result.value.next_data;
+            return wbin_decode_exprs(data, &elem->init);
+        }
+        case 7: {
+            elem->elemmode.kind = WasmElemModeDeclarative;
+            WasmDecodeResult ref_result = wbin_decode_reftype(data, &elem->reftype);
+            if (!wbin_is_ok(ref_result)) return ref_result;
+            data = ref_result.value.next_data;
+            return wbin_decode_exprs(data, &elem->init);
+        }
+        default:
+            return wbin_err(WasmDecodeErrInvalidElem, tag);
+    }
+
+    return wbin_ok(data);
+}
+
+WasmDecodeResult wbin_decode_elems(void *data, WasmModule *wmod) {
+    u_int32_t len;
+    data = wbin_decode_leb128(data, &len);
+
+    while (len-- > 0) {
+        WasmElem elem;
+        wmod_elem_init(&elem);
+        WasmDecodeResult result = wbin_decode_elem(data, &elem);
+        if (!wbin_is_ok(result)) return result;
+        data = result.value.next_data;
+        wmod_push_back_elem(wmod, &elem);
+    }
+
+    return wbin_ok(data);
 }
 
 WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule *wmod) {
@@ -1336,6 +1470,7 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
         case SectionIdDataCount:
             return wbin_decode_datacount(section, wmod);
         case SectionIdElement:
+            return wbin_decode_elems(section, wmod);
         case SectionIdCustom:
             return wbin_ok(section);
         default:
@@ -1415,6 +1550,8 @@ char *wbin_explain_error_code(WasmDecodeResult result) {
             return "expected zero bytes";
         case WasmDecodeErrUnknownOpcode:
             return "unknown opcode";
+        case WasmDecodeErrInvalidElem:
+            return "invalid elem";
         default:
             return "unknown error code";
     }
