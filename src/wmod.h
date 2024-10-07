@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <sys/_types/_u_int32_t.h>
+#include <sys/_types/_u_int8_t.h>
 #include "vec.h"
 
 typedef u_int32_t wasm_func_idx_t;
