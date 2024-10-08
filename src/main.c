@@ -5,6 +5,7 @@
 #include "cli.h"
 #include "wmod.h"
 #include "wbin.h"
+#include "wrun.h"
 
 void cli_parse_or_exit(CliArgs *args, int argc, char *argv[]) {
     int cli_err = cli_parse(args, argc, argv);
@@ -31,13 +32,32 @@ void wbin_read_module_or_exit(CliArgs *args, WasmModule *wmod) {
     }
 }
 
+void wrun_instantiate_or_exit(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
+    WasmInstantiateRequest req;
+    req.wmod = wmod;
+    req.store = store;
+    req.inst = winst;
+    vec_init(&req.imports);
+    WasmInstantiateResult result = wrun_instantiate(req);
+    if (result != WasmInstantiateOk) {
+        printf("Failed to instantiate wasm module\n");
+        exit(3);
+    }
+}
+
 int main(int argc, char *argv[]) {
+
     CliArgs args;
     WasmModule wmod;
+    WasmStore store;
+    WasmModuleInst winst;
+
     wmod_init(&wmod);
+    wrun_store_init(&store);
 
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
+    wrun_instantiate_or_exit(&wmod, &store, &winst);
 
     wmod_dump(&wmod);
 

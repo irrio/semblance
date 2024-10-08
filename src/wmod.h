@@ -601,3 +601,10 @@ void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *val)
 void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins);
 void wmod_elem_push_back_expr(WasmElem *elem, WasmExpr *expr);
 void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode);
+
+typedef enum {
+    WasmModuleOk,
+    WasmModuleInvalid,
+} WasmValidateResult;
+
+WasmValidateResult wmod_validate(WasmModule *wmod);

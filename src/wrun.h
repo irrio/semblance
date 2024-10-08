@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <cstdint>
+#include <stdint.h>
 #include "vec.h"
 #include "wmod.h"
 
@@ -161,3 +161,16 @@ typedef struct {
 typedef struct {
     VEC(WasmStackEntry) entries;
 } WasmStack;
+
+typedef struct {
+    WasmStore *store;
+    WasmModule *wmod;
+    VEC(WasmExternVal) imports;
+    WasmModuleInst *inst;
+} WasmInstantiateRequest;
+
+typedef enum {
+    WasmInstantiateOk,
+} WasmInstantiateResult;
+
+WasmInstantiateResult wrun_instantiate(WasmInstantiateRequest wreq);

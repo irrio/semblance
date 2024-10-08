@@ -438,3 +438,7 @@ void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode) {
             break;
     }
 }
+
+WasmValidateResult wmod_validate(WasmModule *wmod) {
+    return WasmModuleOk;
+}
