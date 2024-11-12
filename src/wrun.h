@@ -122,15 +122,17 @@ typedef struct {
 } WasmDataInst;
 
 typedef struct {
-    WasmFuncInst *funcs;
-    WasmTableInst *tables;
-    WasmMemInst *mems;
-    WasmGlobalInst *globals;
-    WasmElemInst *elems;
-    WasmDataInst *datas;
+    VEC(WasmFuncInst) funcs;
+    VEC(WasmTableInst) tables;
+    VEC(WasmMemInst) mems;
+    VEC(WasmGlobalInst) globals;
+    VEC(WasmElemInst) elems;
+    VEC(WasmDataInst) datas;
 } WasmStore;
 
 void wrun_store_init(WasmStore *store);
+wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, WasmFunc *func);
+void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst);
 
 typedef struct {
     u_int32_t argument_arity;

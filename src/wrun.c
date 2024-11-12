@@ -54,8 +54,34 @@ void wrun_result_init(WasmResult *result) {
     vec_init(&result->values);
 }
 
+void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
+    winst->types = wmod->types.ptr;
+
+    VEC(wasm_func_addr_t) funcaddrs;
+    vec_init(&funcaddrs);
+    for (size_t i = 0; i < wmod->funcs.len; i++) {
+        WasmFunc *func = wmod->funcs.ptr + (i * sizeof(WasmFunc));
+        wasm_func_addr_t funcaddr = wrun_store_alloc_func(store, winst, func);
+        vec_push_back(&funcaddrs, sizeof(wasm_func_addr_t), &funcaddr);
+    }
+}
+
 void wrun_store_init(WasmStore *store) {
-    return;
+    vec_init(&store->funcs);
+    vec_init(&store->tables);
+    vec_init(&store->mems);
+    vec_init(&store->globals);
+    vec_init(&store->elems);
+    vec_init(&store->datas);
+}
+
+wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, WasmFunc *func) {
+    WasmFuncInst finst;
+    finst.functype = winst->types[func->type_idx];
+    finst.kind = WasmFuncInstWasm;
+    finst.val.wasmfunc.module = winst;
+    finst.val.wasmfunc.func = func;
+    return vec_push_back(&store->funcs, sizeof(WasmFuncInst), &finst);
 }
 
 void wrun_stack_init(WasmStack *stack) {
