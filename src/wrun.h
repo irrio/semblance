@@ -131,7 +131,8 @@ typedef struct {
 
 void wrun_store_init(WasmStore *store);
 wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, WasmFunc *func);
-wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmModuleInst *winst, WasmTable *table, WasmRefValue initval);
+wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmTable *table, WasmRefValue initval);
+wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem);
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst);
 
 typedef struct {

@@ -1,6 +1,8 @@
 
 #include "wrun.h"
 
+const u_int32_t WMEM_PAGE_SIZE = 65536;
+
 void wrun_num_default(WasmNumType numtype, WasmNumValue *num) {
     switch (numtype) {
         case WasmNumI32:
@@ -65,11 +67,18 @@ wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, 
     return vec_push_back(&store->funcs, sizeof(WasmFuncInst), &finst) + 1;
 }
 
-wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmModuleInst *winst, WasmTable *table, WasmRefValue initval) {
+wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmTable *table, WasmRefValue initval) {
     WasmTableInst tinst;
     tinst.tabletype = *table;
     vec_init_with_size(&tinst.elems, sizeof(WasmRefValue), table->limits.min, &initval);
     return vec_push_back(&store->tables, sizeof(WasmTableInst), &tinst) + 1;
+}
+
+wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem) {
+    WasmMemInst minst;
+    minst.memtype = *mem;
+    vec_init_with_zeros(&minst.data, 1, WMEM_PAGE_SIZE * mem->limits.min);
+    return vec_push_back(&store->mems, sizeof(WasmMemInst), &minst) + 1;
 }
 
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
@@ -87,8 +96,16 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
     vec_init(&tableaddrs);
     for (size_t i = 0; i < wmod->tables.len; i++) {
         WasmTable *table = wmod->tables.ptr + (i * sizeof(WasmTable));
-        wasm_table_addr_t tableaddr = wrun_store_alloc_table(store, winst, table, 0);
+        wasm_table_addr_t tableaddr = wrun_store_alloc_table(store, table, 0);
         vec_push_back(&tableaddrs, sizeof(wasm_table_addr_t), &tableaddr);
+    }
+
+    VEC(wasm_table_addr_t) memaddrs;
+    vec_init(&memaddrs);
+    for (size_t i = 0; i < wmod->mems.len; i++) {
+        WasmMemType *mem = wmod->mems.ptr + (i * sizeof(WasmMemType));
+        wasm_mem_addr_t memaddr = wrun_store_alloc_mem(store, mem);
+        vec_push_back(&memaddrs, sizeof(wasm_mem_addr_t), &memaddr);
     }
 }
 
