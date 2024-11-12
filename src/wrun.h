@@ -5,13 +5,15 @@
 #include "vec.h"
 #include "wmod.h"
 
-typedef u_int32_t wasm_func_addr_t;
-typedef u_int32_t wasm_table_addr_t;
-typedef u_int32_t wasm_mem_addr_t;
-typedef u_int32_t wasm_global_addr_t;
-typedef u_int32_t wasm_elem_addr_t;
-typedef u_int32_t wasm_data_addr_t;
-typedef u_int32_t wasm_extern_addr_t;
+typedef u_int32_t wasm_addr_t;
+
+typedef wasm_addr_t wasm_func_addr_t;
+typedef wasm_addr_t wasm_table_addr_t;
+typedef wasm_addr_t wasm_mem_addr_t;
+typedef wasm_addr_t wasm_global_addr_t;
+typedef wasm_addr_t wasm_elem_addr_t;
+typedef wasm_addr_t wasm_data_addr_t;
+typedef wasm_addr_t wasm_extern_addr_t;
 
 typedef union {
     int32_t i32;
@@ -22,10 +24,7 @@ typedef union {
 
 typedef u_int8_t WasmVecValue [8];
 
-typedef union {
-    wasm_func_addr_t funcaddr;
-    wasm_extern_addr_t externaddr;
-} WasmRefValue;
+typedef wasm_addr_t WasmRefValue;
 
 typedef union {
     WasmNumValue num;
@@ -132,6 +131,7 @@ typedef struct {
 
 void wrun_store_init(WasmStore *store);
 wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, WasmFunc *func);
+wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmModuleInst *winst, WasmTable *table, WasmRefValue initval);
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst);
 
 typedef struct {

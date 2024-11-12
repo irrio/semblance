@@ -19,6 +19,16 @@ void vec_init_with_capacity(Vec *vec, size_t width, size_t capacity) {
     vec->cap = ptr == NULL ? 0 : capacity;
 }
 
+void vec_init_with_size(Vec *vec, size_t width, size_t size, void *initval) {
+    void *ptr = malloc(width * size);
+    vec->len = size;
+    vec->ptr = ptr;
+    vec->cap = size;
+    for (size_t i = 0; i < size; i++) {
+        memcpy(ptr + (width * i), initval, width);
+    }
+}
+
 size_t vec_push_back(Vec *vec, size_t width, void *data) {
     size_t rem = vec->cap - vec->len;
     if (rem == 0) {
