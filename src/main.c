@@ -32,19 +32,6 @@ void wbin_read_module_or_exit(CliArgs *args, WasmModule *wmod) {
     }
 }
 
-void wrun_instantiate_or_exit(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
-    WasmInstantiateRequest req;
-    req.wmod = wmod;
-    req.store = store;
-    req.inst = winst;
-    vec_init(&req.imports);
-    WasmInstantiateResult result = wrun_instantiate(req);
-    if (result != WasmInstantiateOk) {
-        printf("Failed to instantiate wasm module\n");
-        exit(3);
-    }
-}
-
 int main(int argc, char *argv[]) {
 
     CliArgs args;
@@ -57,7 +44,6 @@ int main(int argc, char *argv[]) {
 
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
-    wrun_instantiate_or_exit(&wmod, &store, &winst);
 
     wmod_dump(&wmod);
 

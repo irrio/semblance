@@ -2,6 +2,7 @@
 #include "vec.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 const size_t VEC_INITIAL_CAPACITY = 8;
 
@@ -31,4 +32,11 @@ size_t vec_push_back(Vec *vec, size_t width, void *data) {
     }
     memcpy(vec->ptr + (width * vec->len), data, width);
     return vec->len++;
+}
+
+bool vec_pop_back(Vec *vec, size_t width, void *out) {
+    if (vec->len == 0) return false;
+    memcpy(out, vec->ptr + (width * (vec->len - 1)), width);
+    vec->len--;
+    return true;
 }

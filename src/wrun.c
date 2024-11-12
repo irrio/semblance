@@ -58,6 +58,23 @@ void wrun_store_init(WasmStore *store) {
     return;
 }
 
-WasmInstantiateResult wrun_instantiate(WasmInstantiateRequest req) {
-    return WasmInstantiateOk;
+void wrun_stack_init(WasmStack *stack) {
+    vec_init(&stack->entries);
+}
+
+size_t wrun_stack_push(WasmStack *stack, WasmStackEntry *entry) {
+    return vec_push_back(&stack->entries, sizeof(WasmStackEntry), entry);
+}
+
+size_t wrun_stack_push_auxiliary_frame(WasmStack *stack, WasmModuleInst *winst) {
+    WasmStackEntry frame;
+    frame.kind = WasmStackEntryActivation;
+    frame.entry.activation.return_arity = 0;
+    frame.entry.activation.inst = winst;
+    vec_init(&frame.entry.activation.locals);
+    return wrun_stack_push(stack, &frame);
+}
+
+bool wrun_stack_pop(WasmStack *stack, WasmStackEntry *out) {
+    return vec_pop_back(&stack->entries, sizeof(WasmStackEntry), out);
 }
