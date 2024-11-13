@@ -88,6 +88,14 @@ wasm_global_addr_t wrun_store_alloc_global(WasmStore *store, WasmGlobalType *glo
     return vec_push_back(&store->globals, sizeof(WasmGlobalInst), &ginst) + 1;
 }
 
+wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(WasmRefValue) *references) {
+    WasmElemInst einst;
+    vec_init(&einst.elem);
+    vec_clone(references, &einst.elem, sizeof(WasmRefValue));
+    einst.reftype = elem->reftype;
+    return vec_push_back(&store->elems, sizeof(WasmElemInst), &einst) + 1;
+}
+
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
     winst->types = wmod->types.ptr;
 
@@ -123,6 +131,16 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         wrun_value_default(global->globaltype.valtype, &initval);
         wasm_global_addr_t globaladdr = wrun_store_alloc_global(store, &global->globaltype, initval);
         vec_push_back(&globaladdrs, sizeof(wasm_global_addr_t), &globaladdr);
+    }
+
+    VEC(wasm_elem_addr_t) elemaddrs;
+    vec_init(&elemaddrs);
+    for (size_t i = 0; i < wmod->elems.len; i++) {
+        WasmElem *elem = wmod->elems.ptr + (i * sizeof(WasmElem));
+        Vec references;
+        vec_init(&references);
+        wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, &references);
+        vec_push_back(&elemaddrs, sizeof(wasm_elem_addr_t), &elemaddr);
     }
 }
 

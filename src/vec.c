@@ -57,3 +57,11 @@ bool vec_pop_back(Vec *vec, size_t width, void *out) {
     vec->len--;
     return true;
 }
+
+void vec_clone(Vec *src, Vec *dst, size_t width) {
+    dst->len = src->len;
+    dst->cap = src->cap;
+    size_t bytes = src->cap * width;
+    dst->ptr = realloc(dst->ptr, bytes);
+    memcpy(dst->ptr, src->ptr, bytes);
+}
