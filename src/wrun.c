@@ -81,6 +81,13 @@ wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem) {
     return vec_push_back(&store->mems, sizeof(WasmMemInst), &minst) + 1;
 }
 
+wasm_global_addr_t wrun_store_alloc_global(WasmStore *store, WasmGlobalType *globaltype, WasmValue val) {
+    WasmGlobalInst ginst;
+    ginst.globaltype = *globaltype;
+    ginst.val = val;
+    return vec_push_back(&store->globals, sizeof(WasmGlobalInst), &ginst) + 1;
+}
+
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
     winst->types = wmod->types.ptr;
 
@@ -106,6 +113,16 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         WasmMemType *mem = wmod->mems.ptr + (i * sizeof(WasmMemType));
         wasm_mem_addr_t memaddr = wrun_store_alloc_mem(store, mem);
         vec_push_back(&memaddrs, sizeof(wasm_mem_addr_t), &memaddr);
+    }
+
+    VEC(wasm_global_addr_t) globaladdrs;
+    vec_init(&globaladdrs);
+    for (size_t i = 0; i < wmod->globals.len; i++) {
+        WasmGlobal *global = wmod->globals.ptr + (i * sizeof(WasmGlobal));
+        WasmValue initval;
+        wrun_value_default(global->globaltype.valtype, &initval);
+        wasm_global_addr_t globaladdr = wrun_store_alloc_global(store, &global->globaltype, initval);
+        vec_push_back(&globaladdrs, sizeof(wasm_global_addr_t), &globaladdr);
     }
 }
 
