@@ -135,6 +135,7 @@ wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmTable *table, Was
 wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem);
 wasm_global_addr_t wrun_store_alloc_global(WasmStore *store, WasmGlobalType *globaltype, WasmValue val);
 wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(WasmRefValue) *references);
+wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *data, VEC(u_int8_t) *bytes);
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst);
 
 typedef struct {

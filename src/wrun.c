@@ -96,6 +96,12 @@ wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(Was
     return vec_push_back(&store->elems, sizeof(WasmElemInst), &einst) + 1;
 }
 
+wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *data, VEC(u_int8_t) *bytes) {
+    WasmDataInst dinst;
+    dinst.data = *bytes;
+    return vec_push_back(&store->datas, sizeof(WasmDataInst), &dinst) + 1;
+}
+
 void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
     winst->types = wmod->types.ptr;
 
@@ -123,6 +129,7 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         vec_push_back(&memaddrs, sizeof(wasm_mem_addr_t), &memaddr);
     }
 
+    // TODO: provide global values from params
     VEC(wasm_global_addr_t) globaladdrs;
     vec_init(&globaladdrs);
     for (size_t i = 0; i < wmod->globals.len; i++) {
@@ -133,6 +140,7 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         vec_push_back(&globaladdrs, sizeof(wasm_global_addr_t), &globaladdr);
     }
 
+    // TODO: provide reference values from params
     VEC(wasm_elem_addr_t) elemaddrs;
     vec_init(&elemaddrs);
     for (size_t i = 0; i < wmod->elems.len; i++) {
@@ -141,6 +149,17 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         vec_init(&references);
         wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, &references);
         vec_push_back(&elemaddrs, sizeof(wasm_elem_addr_t), &elemaddr);
+    }
+
+    // TODO: provide data values from params
+    VEC(wasm_data_addr_t) dataaddrs;
+    vec_init(&dataaddrs);
+    for (size_t i = 0; i < wmod->datas.len; i++) {
+        WasmData *wdata = wmod->datas.ptr + (i * sizeof(WasmData));
+        Vec bytes;
+        vec_init(&bytes);
+        wasm_data_addr_t dataaddr = wrun_store_alloc_data(store, wdata, &bytes);
+        vec_push_back(&dataaddrs, sizeof(wasm_data_addr_t), &dataaddr);
     }
 }
 
