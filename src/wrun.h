@@ -150,10 +150,11 @@ typedef struct {
     VEC(wasm_global_addr_t) globals;
 } WasmDecomposedImports;
 
-void wrun_init_params_init(WasmInitParams *params);
+void wrun_init_params_init(WasmInitParams *params, VEC(WasmExternVal) *imports);
 void wrun_decompose_imports(VEC(WasmExternVal) *imports, WasmDecomposedImports *out);
 void wrun_free_decomposed_imports(WasmDecomposedImports *decomposed);
 WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, WasmInitParams *params);
+WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports);
 
 typedef struct {
     u_int32_t argument_arity;

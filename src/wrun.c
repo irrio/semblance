@@ -172,10 +172,10 @@ wasm_data_addr_t *wrun_store_alloc_datas(WasmStore *store, VEC(WasmData) *wdatas
     return dataaddrs.ptr;
 }
 
-void wrun_init_params_init(WasmInitParams *params) {
+void wrun_init_params_init(WasmInitParams *params, VEC(WasmExternVal) *imports) {
     vec_init(&params->globalinit);
-    vec_init(&params->imports);
     vec_init(&params->references);
+    params->imports = *imports;
 }
 
 void wrun_decompose_imports(VEC(WasmExternVal) *imports, WasmDecomposedImports *out) {
@@ -286,6 +286,13 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
     winst->exports = wrun_instance_assign_exports(&wmod->exports, &params->imports, winst);
 
     return winst;
+}
+
+WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports) {
+    WasmInitParams params;
+    wrun_init_params_init(&params, imports);
+
+    return wrun_store_alloc_module(store, wmod, &params);
 }
 
 void wrun_stack_init(WasmStack *stack) {
