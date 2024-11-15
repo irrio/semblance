@@ -157,6 +157,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         wasm_func_addr_t funcaddr = wrun_store_alloc_func(store, winst, func);
         vec_push_back(&funcaddrs, sizeof(wasm_func_addr_t), &funcaddr);
     }
+    winst->funcaddrs = funcaddrs.ptr;
 
     VEC(wasm_table_addr_t) tableaddrs;
     vec_init(&tableaddrs);
@@ -165,6 +166,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         wasm_table_addr_t tableaddr = wrun_store_alloc_table(store, table, 0);
         vec_push_back(&tableaddrs, sizeof(wasm_table_addr_t), &tableaddr);
     }
+    winst->tableaddrs = tableaddrs.ptr;
 
     VEC(wasm_table_addr_t) memaddrs;
     vec_init(&memaddrs);
@@ -173,6 +175,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         wasm_mem_addr_t memaddr = wrun_store_alloc_mem(store, mem);
         vec_push_back(&memaddrs, sizeof(wasm_mem_addr_t), &memaddr);
     }
+    winst->memaddrs = memaddrs.ptr;
 
     VEC(wasm_global_addr_t) globaladdrs;
     vec_init(&globaladdrs);
@@ -182,6 +185,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         wasm_global_addr_t globaladdr = wrun_store_alloc_global(store, &global->globaltype, initval);
         vec_push_back(&globaladdrs, sizeof(wasm_global_addr_t), &globaladdr);
     }
+    winst->globaladdrs = globaladdrs.ptr;
 
     VEC(wasm_elem_addr_t) elemaddrs;
     vec_init(&elemaddrs);
@@ -191,6 +195,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, references);
         vec_push_back(&elemaddrs, sizeof(wasm_elem_addr_t), &elemaddr);
     }
+    winst->elemaddrs = elemaddrs.ptr;
 
     VEC(wasm_data_addr_t) dataaddrs;
     vec_init(&dataaddrs);
@@ -199,6 +204,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         wasm_data_addr_t dataaddr = wrun_store_alloc_data(store, wdata);
         vec_push_back(&dataaddrs, sizeof(wasm_data_addr_t), &dataaddr);
     }
+    winst->dataaddrs = dataaddrs.ptr;
 
     WasmDecomposedImports decomposed;
     wrun_decompose_imports(&params->imports, &decomposed);
@@ -253,6 +259,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
         vec_push_back(&exports, sizeof(WasmExportInst), &inst);
     }
     wrun_free_decomposed_imports(&decomposed);
+    winst->exports = exports.ptr;
     return winst;
 }
 
