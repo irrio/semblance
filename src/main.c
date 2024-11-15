@@ -44,7 +44,9 @@ int main(int argc, char *argv[]) {
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
 
-    WasmModuleInst *winst = wrun_store_alloc_module(&store, &wmod);
+    WasmInitParams params;
+    wrun_init_params_init(&params);
+    WasmModuleInst *winst = wrun_store_alloc_module(&store, &wmod, &params);
 
     wmod_dump(&wmod);
 

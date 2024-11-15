@@ -1,6 +1,7 @@
 
 #include "wrun.h"
 #include <stdlib.h>
+#include <assert.h>
 
 const u_int32_t WMEM_PAGE_SIZE = 65536;
 
@@ -103,7 +104,49 @@ wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *wdata) {
     return vec_push_back(&store->datas, sizeof(WasmDataInst), &dinst) + 1;
 }
 
-WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod) {
+void wrun_init_params_init(WasmInitParams *params) {
+    vec_init(&params->globalinit);
+    vec_init(&params->imports);
+    vec_init(&params->references);
+}
+
+void wrun_decompose_imports(VEC(WasmExternVal) *imports, WasmDecomposedImports *out) {
+    vec_init(&out->funcs);
+    vec_init(&out->globals);
+    vec_init(&out->mems);
+    vec_init(&out->tables);
+
+    for (size_t i = 0; i < imports->len; i++) {
+        WasmExternVal *import = vec_at(imports, sizeof(WasmExternVal), i);
+        switch (import->kind) {
+            case WasmExternValFunc:
+                vec_push_back(&out->funcs, sizeof(wasm_func_addr_t), &import->val.func);
+                break;
+            case WasmExternValMem:
+                vec_push_back(&out->mems, sizeof(wasm_mem_addr_t), &import->val.mem);
+                break;
+            case WasmExternValGlobal:
+                vec_push_back(&out->globals, sizeof(wasm_global_addr_t), &import->val.global);
+                break;
+            case WasmExternValTable:
+                vec_push_back(&out->tables, sizeof(wasm_table_addr_t), &import->val.table);
+                break;
+        }
+    }
+}
+
+void wrun_free_decomposed_imports(WasmDecomposedImports *decomposed) {
+    vec_free(&decomposed->funcs);
+    vec_free(&decomposed->mems);
+    vec_free(&decomposed->tables);
+    vec_free(&decomposed->globals);
+}
+
+WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, WasmInitParams *params) {
+    assert(params->globalinit.len == wmod->globals.len);
+    assert(params->imports.len == wmod->imports.len);
+    assert(params->references.len == wmod->elems.len);
+
     WasmModuleInst *winst = malloc(sizeof(WasmModuleInst));
     winst->types = wmod->types.ptr;
 
@@ -131,25 +174,21 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod) {
         vec_push_back(&memaddrs, sizeof(wasm_mem_addr_t), &memaddr);
     }
 
-    // TODO: provide global values from params
     VEC(wasm_global_addr_t) globaladdrs;
     vec_init(&globaladdrs);
     for (size_t i = 0; i < wmod->globals.len; i++) {
         WasmGlobal *global = wmod->globals.ptr + (i * sizeof(WasmGlobal));
-        WasmValue initval;
-        wrun_value_default(global->globaltype.valtype, &initval);
+        WasmValue initval = *(WasmValue *)vec_at(&params->globalinit, sizeof(WasmValue), i);
         wasm_global_addr_t globaladdr = wrun_store_alloc_global(store, &global->globaltype, initval);
         vec_push_back(&globaladdrs, sizeof(wasm_global_addr_t), &globaladdr);
     }
 
-    // TODO: provide reference values from params
     VEC(wasm_elem_addr_t) elemaddrs;
     vec_init(&elemaddrs);
     for (size_t i = 0; i < wmod->elems.len; i++) {
         WasmElem *elem = wmod->elems.ptr + (i * sizeof(WasmElem));
-        Vec references;
-        vec_init(&references);
-        wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, &references);
+        Vec *references = vec_at(&params->references, sizeof(Vec), i);
+        wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, references);
         vec_push_back(&elemaddrs, sizeof(wasm_elem_addr_t), &elemaddr);
     }
 
@@ -161,33 +200,59 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod) {
         vec_push_back(&dataaddrs, sizeof(wasm_data_addr_t), &dataaddr);
     }
 
+    WasmDecomposedImports decomposed;
+    wrun_decompose_imports(&params->imports, &decomposed);
     VEC(WasmExportInst) exports;
     vec_init(&exports);
     for (size_t i = 0; i < wmod->exports.len; i++) {
         WasmExport *wexp = wmod->exports.ptr + (i * sizeof(WasmExport));
         WasmExportInst inst;
         inst.name = wexp->name;
-        // TODO: include mem/func/table/global imports from input param
         switch (wexp->desc.kind) {
-            case WasmExportMem:
+            case WasmExportMem: {
                 inst.val.kind = WasmExternValMem;
-                inst.val.val.mem = *(wasm_mem_addr_t*)vec_at(&memaddrs, sizeof(wasm_mem_addr_t), wexp->desc.value.mem);
+                wasm_mem_idx_t idx = wexp->desc.value.mem;
+                if (idx < decomposed.mems.len) {
+                    inst.val.val.mem = *(wasm_mem_addr_t*)vec_at(&decomposed.mems, sizeof(wasm_mem_addr_t), idx);
+                } else {
+                    inst.val.val.mem = *(wasm_mem_addr_t*)vec_at(&memaddrs, sizeof(wasm_mem_addr_t), idx - decomposed.mems.len);
+                }
                 break;
-            case WasmExportFunc:
+            }
+            case WasmExportFunc: {
                 inst.val.kind = WasmExternValFunc;
-                inst.val.val.func = *(wasm_func_addr_t*)vec_at(&funcaddrs, sizeof(wasm_func_addr_t), wexp->desc.value.func);
+                wasm_func_idx_t idx = wexp->desc.value.func;
+                if (idx < decomposed.funcs.len) {
+                    inst.val.val.func = *(wasm_func_addr_t*)vec_at(&decomposed.funcs, sizeof(wasm_func_addr_t), idx);
+                } else {
+                    inst.val.val.func = *(wasm_func_addr_t*)vec_at(&funcaddrs, sizeof(wasm_func_addr_t), idx - decomposed.funcs.len);
+                }
                 break;
-            case WasmExportTable:
+            }
+            case WasmExportTable: {
                 inst.val.kind = WasmExternValTable;
-                inst.val.val.table = *(wasm_table_addr_t*)vec_at(&tableaddrs, sizeof(wasm_table_addr_t), wexp->desc.value.table);
+                wasm_table_idx_t idx = wexp->desc.value.table;
+                if (idx < decomposed.tables.len) {
+                    inst.val.val.table = *(wasm_table_addr_t*)vec_at(&decomposed.tables, sizeof(wasm_table_addr_t), idx);
+                } else {
+                    inst.val.val.table = *(wasm_table_addr_t*)vec_at(&tableaddrs, sizeof(wasm_table_addr_t), idx - decomposed.tables.len);
+                }
                 break;
-            case WasmExportGlobal:
+            }
+            case WasmExportGlobal: {
                 inst.val.kind = WasmExternValGlobal;
-                inst.val.val.global = *(wasm_global_addr_t*)vec_at(&globaladdrs, sizeof(wasm_global_addr_t), wexp->desc.value.global);
+                wasm_global_idx_t idx = wexp->desc.value.global;
+                if (idx < decomposed.globals.len) {
+                    inst.val.val.global = *(wasm_global_addr_t*)vec_at(&decomposed.globals, sizeof(wasm_global_addr_t), idx);
+                } else {
+                    inst.val.val.global = *(wasm_global_addr_t*)vec_at(&globaladdrs, sizeof(wasm_global_addr_t), idx - decomposed.globals.len);
+                }
                 break;
+            }
         }
         vec_push_back(&exports, sizeof(WasmExportInst), &inst);
     }
+    wrun_free_decomposed_imports(&decomposed);
     return winst;
 }
 

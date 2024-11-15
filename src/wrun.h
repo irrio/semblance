@@ -136,7 +136,24 @@ wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem);
 wasm_global_addr_t wrun_store_alloc_global(WasmStore *store, WasmGlobalType *globaltype, WasmValue val);
 wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(WasmRefValue) *references);
 wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *wdata);
-WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod);
+
+typedef struct {
+    VEC(WasmExternVal) imports;
+    VEC(WasmValue) globalinit;
+    VEC(VEC(WasmRefValue)) references;
+} WasmInitParams;
+
+typedef struct {
+    VEC(wasm_mem_addr_t) mems;
+    VEC(wasm_func_addr_t) funcs;
+    VEC(wasm_table_addr_t) tables;
+    VEC(wasm_global_addr_t) globals;
+} WasmDecomposedImports;
+
+void wrun_init_params_init(WasmInitParams *params);
+void wrun_decompose_imports(VEC(WasmExternVal) *imports, WasmDecomposedImports *out);
+void wrun_free_decomposed_imports(WasmDecomposedImports *decomposed);
+WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, WasmInitParams *params);
 
 typedef struct {
     u_int32_t argument_arity;

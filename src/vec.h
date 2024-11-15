@@ -18,5 +18,6 @@ size_t vec_push_back(Vec *vec, size_t width, void *data);
 bool vec_pop_back(Vec *vec, size_t width, void *out);
 void *vec_at(Vec *vec, size_t width, size_t idx);
 void vec_clone(Vec *src, Vec *dst, size_t width);
+void vec_free(Vec *vec);
 
 #define VEC(ty) Vec

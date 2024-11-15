@@ -69,3 +69,10 @@ void vec_clone(Vec *src, Vec *dst, size_t width) {
     dst->ptr = realloc(dst->ptr, bytes);
     memcpy(dst->ptr, src->ptr, bytes);
 }
+
+void vec_free(Vec *vec) {
+    free(vec->ptr);
+    vec->ptr = NULL;
+    vec->cap = 0;
+    vec->len = 0;
+}
