@@ -58,6 +58,10 @@ bool vec_pop_back(Vec *vec, size_t width, void *out) {
     return true;
 }
 
+void *vec_at(Vec *vec, size_t width, size_t idx) {
+    return vec->ptr + (idx * width);
+}
+
 void vec_clone(Vec *src, Vec *dst, size_t width) {
     dst->len = src->len;
     dst->cap = src->cap;

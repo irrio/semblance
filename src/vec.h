@@ -16,6 +16,7 @@ void vec_init_with_zeros(Vec *vec, size_t width, size_t size);
 void vec_init_with_size(Vec *vec, size_t width, size_t size, void *initval);
 size_t vec_push_back(Vec *vec, size_t width, void *data);
 bool vec_pop_back(Vec *vec, size_t width, void *out);
+void *vec_at(Vec *vec, size_t width, size_t idx);
 void vec_clone(Vec *src, Vec *dst, size_t width);
 
 #define VEC(ty) Vec

@@ -161,6 +161,34 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         wasm_data_addr_t dataaddr = wrun_store_alloc_data(store, wdata, &bytes);
         vec_push_back(&dataaddrs, sizeof(wasm_data_addr_t), &dataaddr);
     }
+
+    VEC(WasmExportInst) exports;
+    vec_init(&exports);
+    for (size_t i = 0; i < wmod->exports.len; i++) {
+        WasmExport *wexp = wmod->exports.ptr + (i * sizeof(WasmExport));
+        WasmExportInst inst;
+        inst.name = wexp->name;
+        // TODO: include mem/func/table/global imports from input param
+        switch (wexp->desc.kind) {
+            case WasmExportMem:
+                inst.val.kind = WasmExternValMem;
+                inst.val.val.mem = *(wasm_mem_addr_t*)vec_at(&memaddrs, sizeof(wasm_mem_addr_t), wexp->desc.value.mem);
+                break;
+            case WasmExportFunc:
+                inst.val.kind = WasmExternValFunc;
+                inst.val.val.func = *(wasm_func_addr_t*)vec_at(&funcaddrs, sizeof(wasm_func_addr_t), wexp->desc.value.func);
+                break;
+            case WasmExportTable:
+                inst.val.kind = WasmExternValTable;
+                inst.val.val.table = *(wasm_table_addr_t*)vec_at(&tableaddrs, sizeof(wasm_table_addr_t), wexp->desc.value.table);
+                break;
+            case WasmExportGlobal:
+                inst.val.kind = WasmExternValGlobal;
+                inst.val.val.global = *(wasm_global_addr_t*)vec_at(&globaladdrs, sizeof(wasm_global_addr_t), wexp->desc.value.global);
+                break;
+        }
+        vec_push_back(&exports, sizeof(WasmExportInst), &inst);
+    }
 }
 
 void wrun_stack_init(WasmStack *stack) {
