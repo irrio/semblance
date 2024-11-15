@@ -97,9 +97,9 @@ wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(Was
     return vec_push_back(&store->elems, sizeof(WasmElemInst), &einst) + 1;
 }
 
-wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *data, VEC(u_int8_t) *bytes) {
+wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *wdata) {
     WasmDataInst dinst;
-    dinst.data = *bytes;
+    dinst.bytes= wdata->bytes;
     return vec_push_back(&store->datas, sizeof(WasmDataInst), &dinst) + 1;
 }
 
@@ -153,14 +153,11 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod) {
         vec_push_back(&elemaddrs, sizeof(wasm_elem_addr_t), &elemaddr);
     }
 
-    // TODO: provide data values from params
     VEC(wasm_data_addr_t) dataaddrs;
     vec_init(&dataaddrs);
     for (size_t i = 0; i < wmod->datas.len; i++) {
         WasmData *wdata = wmod->datas.ptr + (i * sizeof(WasmData));
-        Vec bytes;
-        vec_init(&bytes);
-        wasm_data_addr_t dataaddr = wrun_store_alloc_data(store, wdata, &bytes);
+        wasm_data_addr_t dataaddr = wrun_store_alloc_data(store, wdata);
         vec_push_back(&dataaddrs, sizeof(wasm_data_addr_t), &dataaddr);
     }
 

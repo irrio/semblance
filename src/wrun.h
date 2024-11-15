@@ -117,7 +117,7 @@ typedef struct {
 } WasmElemInst;
 
 typedef struct {
-    VEC(u_int8_t) data;
+    u_int8_t *bytes;
 } WasmDataInst;
 
 typedef struct {
@@ -135,7 +135,7 @@ wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmTable *table, Was
 wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem);
 wasm_global_addr_t wrun_store_alloc_global(WasmStore *store, WasmGlobalType *globaltype, WasmValue val);
 wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(WasmRefValue) *references);
-wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *data, VEC(u_int8_t) *bytes);
+wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *wdata);
 WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod);
 
 typedef struct {
