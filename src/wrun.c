@@ -1,5 +1,6 @@
 
 #include "wrun.h"
+#include <stdlib.h>
 
 const u_int32_t WMEM_PAGE_SIZE = 65536;
 
@@ -102,7 +103,8 @@ wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *data, VEC(u_i
     return vec_push_back(&store->datas, sizeof(WasmDataInst), &dinst) + 1;
 }
 
-void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst *winst) {
+WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod) {
+    WasmModuleInst *winst = malloc(sizeof(WasmModuleInst));
     winst->types = wmod->types.ptr;
 
     VEC(wasm_func_addr_t) funcaddrs;
@@ -189,6 +191,7 @@ void wrun_instantiate_module(WasmModule *wmod, WasmStore *store, WasmModuleInst 
         }
         vec_push_back(&exports, sizeof(WasmExportInst), &inst);
     }
+    return winst;
 }
 
 void wrun_stack_init(WasmStack *stack) {

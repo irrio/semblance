@@ -37,7 +37,6 @@ int main(int argc, char *argv[]) {
     CliArgs args;
     WasmModule wmod;
     WasmStore store;
-    WasmModuleInst winst;
 
     wmod_init(&wmod);
     wrun_store_init(&store);
@@ -45,7 +44,7 @@ int main(int argc, char *argv[]) {
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
 
-    wrun_instantiate_module(&wmod, &store, &winst);
+    WasmModuleInst *winst = wrun_store_alloc_module(&store, &wmod);
 
     wmod_dump(&wmod);
 
