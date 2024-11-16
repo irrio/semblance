@@ -70,13 +70,13 @@ typedef struct {
 
 typedef struct {
     WasmFuncType *types;
-    wasm_func_addr_t *funcaddrs;
-    wasm_table_addr_t *tableaddrs;
-    wasm_mem_addr_t *memaddrs;
-    wasm_global_addr_t *globaladdrs;
-    wasm_elem_addr_t *elemaddrs;
-    wasm_data_addr_t *dataaddrs;
-    WasmExportInst *exports;
+    VEC(wasm_func_addr_t) funcaddrs;
+    VEC(wasm_table_addr_t) tableaddrs;
+    VEC(wasm_mem_addr_t) memaddrs;
+    VEC(wasm_global_addr_t) globaladdrs;
+    VEC(wasm_elem_addr_t) elemaddrs;
+    VEC(wasm_data_addr_t) dataaddrs;
+    VEC(WasmExportInst) exports;
 } WasmModuleInst;
 
 typedef enum {
@@ -143,16 +143,8 @@ typedef struct {
     VEC(VEC(WasmRefValue)) references;
 } WasmInitParams;
 
-typedef struct {
-    VEC(wasm_mem_addr_t) mems;
-    VEC(wasm_func_addr_t) funcs;
-    VEC(wasm_table_addr_t) tables;
-    VEC(wasm_global_addr_t) globals;
-} WasmDecomposedImports;
-
 void wrun_init_params_init(WasmInitParams *params, VEC(WasmExternVal) *imports);
-void wrun_decompose_imports(VEC(WasmExternVal) *imports, WasmDecomposedImports *out);
-void wrun_free_decomposed_imports(WasmDecomposedImports *decomposed);
+void wrun_apply_imports(VEC(WasmExternVal) *imports, WasmModuleInst *winst);
 WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, WasmInitParams *params);
 WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports);
 
