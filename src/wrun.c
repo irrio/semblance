@@ -301,7 +301,12 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
         vec_push_back(&params.globalinit, sizeof(WasmValue), &out);
     }
 
-    // eval element segments
+    for (size_t i = 0; i < wmod->elems.len; i++) {
+        WasmElem *elem = vec_at(&wmod->elems, sizeof(WasmElem), i);
+        WasmValue out;
+        WasmResultKind res = wrun_eval_const_expr(store, &stack, elem->init.ptr, &out);
+        vec_push_back(&params.references, sizeof(WasmValue), &out);
+    }
 
     wrun_dump_init_params(&params);
     return wrun_store_alloc_module(store, wmod, &params);
