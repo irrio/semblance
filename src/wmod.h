@@ -380,6 +380,8 @@ typedef enum {
     WasmOpI64TruncSatF64_u,
 } WasmOpcode;
 
+char *wmod_str_opcode(WasmOpcode opcode);
+
 typedef struct {
     WasmOpcode opcode;
     union {

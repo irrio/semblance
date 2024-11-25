@@ -1195,10 +1195,9 @@ WasmDecodeResult wbin_decode_expr(void *data, WasmExpr *expr) {
         WasmDecodeResult result = wbin_decode_instr(data, &instr);
         if (!wbin_is_ok(result)) return result;
         data = result.value.next_data;
+        wmod_expr_push_back_instruction(expr, &instr);
         if (instr.opcode == WasmOpExprEnd) {
             break;
-        } else {
-            wmod_expr_push_back_instruction(expr, &instr);
         }
     }
 

@@ -1,5 +1,7 @@
 
 #include "wrun.h"
+#include "wmod.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 
@@ -235,7 +237,7 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
     winst_init(winst);
 
     winst->types = wmod->types.ptr;
-    wrun_apply_imports(&wmod->imports, winst);
+    wrun_apply_imports(&params->imports, winst);
     wrun_store_alloc_funcs(store, winst, &wmod->funcs);
     wrun_store_alloc_tables(store, &winst->tableaddrs, &wmod->tables);
     wrun_store_alloc_mems(store, &winst->memaddrs, &wmod->mems);
@@ -247,10 +249,61 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
     return winst;
 }
 
+WasmModuleInst *wrun_alloc_auxiliary_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports) {
+    assert(wmod->imports.len == imports->len);
+
+    WasmModuleInst *winst = malloc(sizeof(WasmModuleInst));
+    winst_init(winst);
+
+    winst->types = wmod->types.ptr;
+
+    for (size_t i = 0; i < imports->len; i++) {
+        WasmExternVal *import = vec_at(imports, sizeof(WasmExternVal), i);
+        switch (import->kind) {
+            case WasmExternValFunc:
+                vec_push_back(&winst->funcaddrs, sizeof(wasm_func_addr_t), &import->val.func);
+                break;
+            case WasmExternValGlobal:
+                vec_push_back(&winst->globaladdrs, sizeof(wasm_global_addr_t), &import->val.global);
+                break;
+            default:
+                break;
+        }
+    }
+
+    wrun_store_alloc_funcs(store, winst, &wmod->funcs);
+
+    return winst;
+}
+
+void wrun_dump_init_params(WasmInitParams *params) {
+    printf("globalinit: [");
+    for (size_t i = 0; i < params->globalinit.len; i++) {
+        WasmValue *val = vec_at(&params->globalinit, sizeof(WasmValue), i);
+        printf("%d, ", val->num.i32);
+    }
+    printf("],\n");
+}
+
 WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports) {
     WasmInitParams params;
     wrun_init_params_init(&params, imports);
 
+    WasmStack stack;
+    wrun_stack_init(&stack);
+    WasmModuleInst *winst_init = wrun_alloc_auxiliary_module(wmod, store, imports);
+    wrun_stack_push_auxiliary_frame(&stack, winst_init);
+
+    for (size_t i = 0; i < wmod->globals.len; i++) {
+        WasmGlobal* global = vec_at(&wmod->globals, sizeof(WasmGlobal), i);
+        WasmValue out;
+        WasmResultKind res = wrun_eval_const_expr(store, &stack, global->init.ptr, &out);
+        vec_push_back(&params.globalinit, sizeof(WasmValue), &out);
+    }
+
+    // eval element segments
+
+    wrun_dump_init_params(&params);
     return wrun_store_alloc_module(store, wmod, &params);
 }
 
@@ -262,6 +315,54 @@ size_t wrun_stack_push(WasmStack *stack, WasmStackEntry *entry) {
     return vec_push_back(&stack->entries, sizeof(WasmStackEntry), entry);
 }
 
+size_t wrun_stack_push_val(WasmStack *stack, WasmValue *val) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryValue,
+        .entry.val = *val
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
+size_t wrun_stack_push_i32(WasmStack *stack, int32_t val) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryValue,
+        .entry.val.num.i32 = val
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
+size_t wrun_stack_push_i64(WasmStack *stack, int64_t val) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryValue,
+        .entry.val.num.i64 = val
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
+size_t wrun_stack_push_f32(WasmStack *stack, float val) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryValue,
+        .entry.val.num.f32 = val
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
+size_t wrun_stack_push_f64(WasmStack *stack, double val) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryValue,
+        .entry.val.num.f64 = val
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
+size_t wrun_stack_push_ref(WasmStack *stack, wasm_addr_t ref) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryValue,
+        .entry.val.ref = ref
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
 size_t wrun_stack_push_auxiliary_frame(WasmStack *stack, WasmModuleInst *winst) {
     WasmStackEntry frame;
     frame.kind = WasmStackEntryActivation;
@@ -271,6 +372,68 @@ size_t wrun_stack_push_auxiliary_frame(WasmStack *stack, WasmModuleInst *winst) 
     return wrun_stack_push(stack, &frame);
 }
 
+WasmActivation *wrun_stack_find_current_frame(WasmStack *stack) {
+    for (size_t i = stack->entries.len; i >= 0; i--) {
+        WasmStackEntry *entry = vec_at(&stack->entries, sizeof(WasmStackEntry), i);
+        if (entry->kind == WasmStackEntryActivation) {
+            return &entry->entry.activation;
+        }
+    }
+    assert(false); // unreachable: no activation frame!
+}
+
 bool wrun_stack_pop(WasmStack *stack, WasmStackEntry *out) {
     return vec_pop_back(&stack->entries, sizeof(WasmStackEntry), out);
+}
+
+bool wrun_stack_pop_val(WasmStack *stack, WasmValue *out) {
+    WasmStackEntry entry;
+    bool popped = wrun_stack_pop(stack, &entry);
+    *out = entry.entry.val;
+    return popped;
+}
+
+WasmResultKind wrun_eval_const_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr, WasmValue *wval) {
+    WasmInstruction* ip = expr;
+    while (true) {
+        switch (ip->opcode) {
+            case WasmOpI32Const:
+                wrun_stack_push_i32(stack, ip->params._const.value.i32);
+                break;
+            case WasmOpI64Const:
+                wrun_stack_push_i64(stack, ip->params._const.value.i64);
+                break;
+            case WasmOpF32Const:
+                wrun_stack_push_f32(stack, ip->params._const.value.f32);
+                break;
+            case WasmOpF64Const:
+                wrun_stack_push_f64(stack, ip->params._const.value.f64);
+                break;
+            case WasmOpRefNull:
+                wrun_stack_push_ref(stack, 0);
+                break;
+            case WasmOpRefFunc: {
+                wasm_func_idx_t funcidx = ip->params.ref_func.funcidx;
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                wasm_func_addr_t *funcaddr = vec_at(&frame->inst->funcaddrs, sizeof(wasm_addr_t), funcidx - 1);
+                wrun_stack_push_ref(stack, *funcaddr);
+                break;
+            }
+            case WasmOpGlobalGet: {
+                wasm_global_idx_t globalidx = ip->params.var.idx.global;
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                wasm_global_addr_t globaladdr = *(wasm_global_addr_t*)vec_at(&frame->inst->globaladdrs, sizeof(wasm_addr_t), globalidx - 1);
+                WasmGlobalInst *glob = (WasmGlobalInst*)vec_at(&store->globals, sizeof(WasmGlobalInst), globaladdr);
+                wrun_stack_push_val(stack, &glob->val);
+                break;
+            }
+            case WasmOpExprEnd:
+                wrun_stack_pop_val(stack, wval);
+                return Ok;
+            default:
+                printf("unhandled opcode [%s]\n", wmod_str_opcode(ip->opcode));
+                return Trap;
+        }
+        ip++;
+    }
 }

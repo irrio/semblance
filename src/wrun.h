@@ -182,3 +182,5 @@ void wrun_stack_init(WasmStack *stack);
 size_t wrun_stack_push(WasmStack *stack, WasmStackEntry *entry);
 size_t wrun_stack_push_auxiliary_frame(WasmStack *stack, WasmModuleInst *winst);
 bool wrun_stack_pop(WasmStack *stack, WasmStackEntry *out);
+
+WasmResultKind wrun_eval_const_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr, WasmValue *wval);
