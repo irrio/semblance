@@ -1,5 +1,6 @@
 
 #include "wrun.h"
+#include "vec.h"
 #include "wmod.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -297,19 +298,57 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
     for (size_t i = 0; i < wmod->globals.len; i++) {
         WasmGlobal* global = vec_at(&wmod->globals, sizeof(WasmGlobal), i);
         WasmValue out;
-        WasmResultKind res = wrun_eval_const_expr(store, &stack, global->init.ptr, &out);
+        WasmResultKind res = wrun_eval_expr(store, &stack, global->init.ptr, &out);
         vec_push_back(&params.globalinit, sizeof(WasmValue), &out);
     }
 
     for (size_t i = 0; i < wmod->elems.len; i++) {
         WasmElem *elem = vec_at(&wmod->elems, sizeof(WasmElem), i);
         WasmValue out;
-        WasmResultKind res = wrun_eval_const_expr(store, &stack, elem->init.ptr, &out);
+        WasmResultKind res = wrun_eval_expr(store, &stack, elem->init.ptr, &out);
         vec_push_back(&params.references, sizeof(WasmValue), &out);
     }
 
+    wrun_stack_pop_and_drop(&stack);
+    WasmModuleInst *winst = wrun_store_alloc_module(store, wmod, &params);
+    wrun_stack_push_auxiliary_frame(&stack, winst);
+
+    WasmInstruction progbuf[5];
+    for (size_t i = 0; i < wmod->elems.len; i++) {
+        WasmElem *elem = vec_at(&wmod->elems, sizeof(WasmElem), i);
+        switch (elem->elemmode.kind) {
+            case WasmElemModeActive: {
+                size_t n = elem->init.len;
+                wrun_exec_expr(store, &stack, elem->elemmode.value.active.offset_expr.ptr);
+                progbuf[0].opcode = WasmOpI32Const;
+                progbuf[0].params._const.value.i32 = 0;
+                progbuf[1].opcode = WasmOpI32Const;
+                progbuf[1].params._const.value.i32 = n;
+                progbuf[2].opcode = WasmOpTableInit;
+                progbuf[2].params.table_init.tableidx = elem->elemmode.value.active.tableidx;
+                progbuf[2].params.table_init.elemidx = i;
+                progbuf[3].opcode = WasmOpElemDrop;
+                progbuf[3].params.elem_drop.elemidx = i;
+                progbuf[4].opcode = WasmOpExprEnd;
+                wrun_exec_expr(store, &stack, progbuf);
+                break;
+            }
+            case WasmElemModeDeclarative:
+                progbuf[0].opcode = WasmOpElemDrop;
+                progbuf[0].params.elem_drop.elemidx = i;
+                progbuf[1].opcode = WasmOpExprEnd;
+                wrun_exec_expr(store, &stack, progbuf);
+                break;
+            default:
+                continue;
+        }
+    }
+
+    // datas
+
     wrun_dump_init_params(&params);
-    return wrun_store_alloc_module(store, wmod, &params);
+
+    return winst;
 }
 
 void wrun_stack_init(WasmStack *stack) {
@@ -391,6 +430,10 @@ bool wrun_stack_pop(WasmStack *stack, WasmStackEntry *out) {
     return vec_pop_back(&stack->entries, sizeof(WasmStackEntry), out);
 }
 
+bool wrun_stack_pop_and_drop(WasmStack *stack) {
+    return vec_pop_back_and_drop(&stack->entries);
+}
+
 bool wrun_stack_pop_val(WasmStack *stack, WasmValue *out) {
     WasmStackEntry entry;
     bool popped = wrun_stack_pop(stack, &entry);
@@ -398,7 +441,15 @@ bool wrun_stack_pop_val(WasmStack *stack, WasmValue *out) {
     return popped;
 }
 
-WasmResultKind wrun_eval_const_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr, WasmValue *wval) {
+WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr, WasmValue *wval) {
+    WasmResultKind res = wrun_exec_expr(store, stack, expr);
+    if (res == Ok) {
+        wrun_stack_pop_val(stack, wval);
+    }
+    return res;
+}
+
+WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr) {
     WasmInstruction* ip = expr;
     while (true) {
         switch (ip->opcode) {
@@ -433,7 +484,6 @@ WasmResultKind wrun_eval_const_expr(WasmStore *store, WasmStack *stack, WasmInst
                 break;
             }
             case WasmOpExprEnd:
-                wrun_stack_pop_val(stack, wval);
                 return Ok;
             default:
                 printf("unhandled opcode [%s]\n", wmod_str_opcode(ip->opcode));

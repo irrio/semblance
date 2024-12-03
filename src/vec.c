@@ -58,6 +58,12 @@ bool vec_pop_back(Vec *vec, size_t width, void *out) {
     return true;
 }
 
+bool vec_pop_back_and_drop(Vec *vec) {
+    if (vec->len == 0) return false;
+    vec->len--;
+    return true;
+}
+
 void *vec_at(Vec *vec, size_t width, size_t idx) {
     return vec->ptr + (idx * width);
 }
