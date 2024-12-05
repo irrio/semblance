@@ -277,15 +277,6 @@ WasmModuleInst *wrun_alloc_auxiliary_module(WasmModule *wmod, WasmStore *store, 
     return winst;
 }
 
-void wrun_dump_init_params(WasmInitParams *params) {
-    printf("globalinit: [");
-    for (size_t i = 0; i < params->globalinit.len; i++) {
-        WasmValue *val = vec_at(&params->globalinit, sizeof(WasmValue), i);
-        printf("%d, ", val->num.i32);
-    }
-    printf("],\n");
-}
-
 WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports) {
     WasmInitParams params;
     wrun_init_params_init(&params, imports);
@@ -368,9 +359,14 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
         }
     }
 
-    // start function
+    if (wmod->start.present) {
+        progbuf[0].opcode = WasmOpCall;
+        progbuf[0].params.call.funcidx = wmod->start.func_idx;
+        progbuf[1].opcode = WasmOpExprEnd;
+        wrun_exec_expr(store, &stack, progbuf);
+    }
 
-    wrun_dump_init_params(&params);
+    wrun_stack_pop_and_drop(&stack);
 
     return winst;
 }
