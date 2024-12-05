@@ -344,7 +344,31 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
         }
     }
 
-    // datas
+    for (size_t i = 0; i < wmod->datas.len; i++) {
+        WasmData *wdata = vec_at(&wmod->datas, sizeof(WasmData), i);
+        switch (wdata->datamode.kind) {
+            case WasmDataModeActive: {
+                assert(wdata->datamode.value.active.memidx == 0);
+                u_int32_t n = wdata->len;
+                wrun_exec_expr(store, &stack, wdata->datamode.value.active.offset_expr.ptr);
+                progbuf[0].opcode = WasmOpI32Const;
+                progbuf[0].params._const.value.i32 = 0;
+                progbuf[1].opcode = WasmOpI32Const;
+                progbuf[1].params._const.value.i32 = n;
+                progbuf[2].opcode = WasmOpMemoryInit;
+                progbuf[2].params.mem_init.dataidx = i;
+                progbuf[3].opcode = WasmOpDataDrop;
+                progbuf[3].params.mem_init.dataidx = i;
+                progbuf[4].opcode = WasmOpExprEnd;
+                wrun_exec_expr(store, &stack, progbuf);
+                break;
+            }
+            default:
+                continue;
+        }
+    }
+
+    // start function
 
     wrun_dump_init_params(&params);
 
