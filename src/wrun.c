@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 const u_int32_t WMEM_PAGE_SIZE = 65536;
 
@@ -146,6 +147,7 @@ void wrun_store_alloc_elems(WasmStore *store, VEC(wasm_elem_addr_t) *elemaddrs, 
 wasm_data_addr_t wrun_store_alloc_data(WasmStore *store, WasmData *wdata) {
     WasmDataInst dinst;
     dinst.bytes= wdata->bytes;
+    dinst.len = wdata->len;
     return vec_push_back(&store->datas, sizeof(WasmDataInst), &dinst) + 1;
 }
 
@@ -351,7 +353,10 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
                 progbuf[3].opcode = WasmOpDataDrop;
                 progbuf[3].params.mem_init.dataidx = i;
                 progbuf[4].opcode = WasmOpExprEnd;
-                wrun_exec_expr(store, &stack, progbuf);
+                WasmResultKind res = wrun_exec_expr(store, &stack, progbuf);
+                if (res == Trap) {
+                    printf("TRAP!\n");
+                }
                 break;
             }
             default:
@@ -472,6 +477,7 @@ WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstructio
 WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr) {
     WasmInstruction* ip = expr;
     while (true) {
+        printf("EXEC OPCODE: %s\n", wmod_str_opcode(ip->opcode));
         switch (ip->opcode) {
             case WasmOpI32Const:
                 wrun_stack_push_i32(stack, ip->params._const.value.i32);
@@ -491,16 +497,50 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
             case WasmOpRefFunc: {
                 wasm_func_idx_t funcidx = ip->params.ref_func.funcidx;
                 WasmActivation *frame = wrun_stack_find_current_frame(stack);
-                wasm_func_addr_t *funcaddr = vec_at(&frame->inst->funcaddrs, sizeof(wasm_addr_t), funcidx - 1);
+                wasm_func_addr_t *funcaddr = vec_at(&frame->inst->funcaddrs, sizeof(wasm_addr_t), funcidx);
                 wrun_stack_push_ref(stack, *funcaddr);
                 break;
             }
             case WasmOpGlobalGet: {
                 wasm_global_idx_t globalidx = ip->params.var.idx.global;
                 WasmActivation *frame = wrun_stack_find_current_frame(stack);
-                wasm_global_addr_t globaladdr = *(wasm_global_addr_t*)vec_at(&frame->inst->globaladdrs, sizeof(wasm_addr_t), globalidx - 1);
-                WasmGlobalInst *glob = (WasmGlobalInst*)vec_at(&store->globals, sizeof(WasmGlobalInst), globaladdr);
+                wasm_global_addr_t globaladdr = *(wasm_global_addr_t*)vec_at(&frame->inst->globaladdrs, sizeof(wasm_addr_t), globalidx);
+                WasmGlobalInst *glob = (WasmGlobalInst*)vec_at(&store->globals, sizeof(WasmGlobalInst), globaladdr - 1);
                 wrun_stack_push_val(stack, &glob->val);
+                break;
+            }
+            case WasmOpMemoryInit: {
+                wasm_data_idx_t x = ip->params.mem_init.dataidx;
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                wasm_mem_addr_t ma = *(wasm_mem_addr_t*)frame->inst->memaddrs.ptr;
+                WasmMemInst *mem = vec_at(&store->mems, sizeof(WasmMemInst), ma - 1);
+                wasm_data_addr_t da = *(wasm_data_addr_t*)vec_at(&frame->inst->dataaddrs, sizeof(wasm_data_addr_t), x);
+                WasmDataInst *data = vec_at(&store->datas, sizeof(WasmDataInst), da - 1);
+                WasmValue n;
+                wrun_stack_pop_val(stack, &n);
+                WasmValue s;
+                wrun_stack_pop_val(stack, &s);
+                WasmValue d;
+                wrun_stack_pop_val(stack, &d);
+                if (s.num.i32 + n.num.i32 > data->len) {
+                    return Trap;
+                }
+                if (d.num.i32 + n.num.i32 > mem->data.len) {
+                    return Trap;
+                }
+                if (n.num.i32 == 0) {
+                    break;
+                }
+                memcpy((mem->data.ptr + d.num.i32), (data->bytes + s.num.i32), n.num.i32);
+                break;
+            }
+            case WasmOpDataDrop: {
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                wasm_data_idx_t dataidx = ip->params.mem_init.dataidx;
+                wasm_data_addr_t *dataaddr = vec_at(&frame->inst->dataaddrs, sizeof(wasm_data_addr_t), dataidx);
+                WasmDataInst *wdata = vec_at(&store->datas, sizeof(WasmDataInst), *dataaddr - 1);
+                wdata->bytes = NULL;
+                wdata->len = 0;
                 break;
             }
             case WasmOpExprEnd:

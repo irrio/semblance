@@ -118,6 +118,7 @@ typedef struct {
 
 typedef struct {
     u_int8_t *bytes;
+    size_t len;
 } WasmDataInst;
 
 typedef struct {

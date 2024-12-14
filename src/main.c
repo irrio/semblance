@@ -48,6 +48,5 @@ int main(int argc, char *argv[]) {
     vec_init(&imports);
     WasmModuleInst *winst = wrun_instantiate_module(&wmod, &store, &imports);
 
-
     return 0;
 }
