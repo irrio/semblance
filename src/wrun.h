@@ -187,3 +187,6 @@ bool wrun_stack_pop_and_drop(WasmStack *stack);
 
 WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr, WasmValue *wval);
 WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr);
+
+WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name);
+WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store);

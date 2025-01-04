@@ -2,6 +2,7 @@
 #include "wrun.h"
 #include "vec.h"
 #include "wmod.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -384,6 +385,14 @@ size_t wrun_stack_push(WasmStack *stack, WasmStackEntry *entry) {
     return vec_push_back(&stack->entries, sizeof(WasmStackEntry), entry);
 }
 
+size_t wrun_stack_push_label(WasmStack *stack, WasmLabel *label) {
+    WasmStackEntry entry = {
+        .kind = WasmStackEntryLabel,
+        .entry.label = *label
+    };
+    return wrun_stack_push(stack, &entry);
+}
+
 size_t wrun_stack_push_val(WasmStack *stack, WasmValue *val) {
     WasmStackEntry entry = {
         .kind = WasmStackEntryValue,
@@ -432,13 +441,27 @@ size_t wrun_stack_push_ref(WasmStack *stack, wasm_addr_t ref) {
     return wrun_stack_push(stack, &entry);
 }
 
-size_t wrun_stack_push_auxiliary_frame(WasmStack *stack, WasmModuleInst *winst) {
+size_t wrun_stack_push_frame(WasmStack *stack, WasmModuleInst *winst, VEC(WasmValue) *locals, u_int32_t arity) {
     WasmStackEntry frame;
     frame.kind = WasmStackEntryActivation;
-    frame.entry.activation.return_arity = 0;
     frame.entry.activation.inst = winst;
-    vec_init(&frame.entry.activation.locals);
+    frame.entry.activation.return_arity = arity;
+    frame.entry.activation.locals = *locals;
     return wrun_stack_push(stack, &frame);
+}
+
+size_t wrun_stack_push_auxiliary_frame(WasmStack *stack, WasmModuleInst *winst) {
+    VEC(WasmValue) locals;
+    vec_init(&locals);
+    return wrun_stack_push_frame(stack, winst, &locals, 0);
+}
+
+size_t wrun_stack_push_dummy_frame(WasmStack *stack) {
+    WasmModuleInst *winst = malloc(sizeof(WasmModuleInst));
+    winst_init(winst);
+    VEC(WasmValue) locals;
+    vec_init(&locals);
+    return wrun_stack_push_frame(stack, winst, &locals, 0);
 }
 
 WasmActivation *wrun_stack_find_current_frame(WasmStack *stack) {
@@ -551,4 +574,43 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
         }
         ip++;
     }
+}
+
+WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name) {
+    size_t slen = strlen(name);
+    for (size_t i = 0; i < winst->exports.len; i++) {
+        WasmExportInst *wexp = vec_at(&winst->exports, sizeof(WasmExportInst), i);
+        if (slen == wexp->name.len && memcmp(wexp->name.bytes, name, slen) == 0) {
+            return wexp->val;
+        }
+    }
+    assert(false); // export not found
+}
+
+WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store) {
+    WasmResult out;
+    out.kind = Ok;
+    vec_init(&out.values);
+
+    WasmStack stack;
+    wrun_stack_init(&stack);
+    wrun_stack_push_dummy_frame(&stack);
+
+    WasmFuncInst *finst = vec_at(&store->funcs, sizeof(WasmFuncInst), funcaddr - 1);
+    uint32_t out_arity = finst->functype.output_type.len;
+    wrun_stack_push_frame(&stack, finst->val.wasmfunc.module, args, out_arity);
+    WasmLabel label = {
+        .argument_arity = out_arity,
+        .instr = NULL
+    };
+    wrun_stack_push_label(&stack, &label);
+
+    out.kind = wrun_exec_expr(store, &stack, finst->val.wasmfunc.func->body.ptr);
+    for (size_t i = 0; i < out_arity; i++) {
+        WasmValue val;
+        wrun_stack_pop_val(&stack, &val);
+        vec_push_back(&out.values, sizeof(WasmValue), &val);
+    }
+
+    return out;
 }

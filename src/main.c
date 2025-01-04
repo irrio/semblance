@@ -1,4 +1,5 @@
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -47,6 +48,14 @@ int main(int argc, char *argv[]) {
     VEC(WasmExternVal) imports;
     vec_init(&imports);
     WasmModuleInst *winst = wrun_instantiate_module(&wmod, &store, &imports);
+
+    WasmExternVal export = wrun_resolve_export(winst, "hello");
+    assert(export.kind == WasmExternValFunc);
+    VEC(WasmValue) fn_args;
+    vec_init(&fn_args);
+    WasmResult wres = wrun_invoke_func(winst, export.val.func, &fn_args, &store);
+
+    printf("hello returned %zu values!\n", wres.values.len);
 
     return 0;
 }
