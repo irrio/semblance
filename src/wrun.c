@@ -546,6 +546,14 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 wrun_stack_push_val(stack, local);
                 break;
             }
+            case WasmOpLocalTee: {
+                wasm_local_idx_t localidx = ip->params.var.idx.local;
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                WasmValue *local = vec_at(&frame->locals, sizeof(WasmValue), localidx);
+                wrun_stack_pop_val(stack, local);
+                wrun_stack_push_val(stack, local);
+                break;
+            }
             case WasmOpMemoryInit: {
                 wasm_data_idx_t x = ip->params.mem_init.dataidx;
                 WasmActivation *frame = wrun_stack_find_current_frame(stack);
