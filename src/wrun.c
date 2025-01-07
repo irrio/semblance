@@ -532,6 +532,13 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 wrun_stack_push_val(stack, &glob->val);
                 break;
             }
+            case WasmOpLocalSet: {
+                wasm_local_idx_t localidx = ip->params.var.idx.local;
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                WasmValue *local = vec_at(&frame->locals, sizeof(WasmValue), localidx);
+                wrun_stack_pop_val(stack, local);
+                break;
+            }
             case WasmOpMemoryInit: {
                 wasm_data_idx_t x = ip->params.mem_init.dataidx;
                 WasmActivation *frame = wrun_stack_find_current_frame(stack);
@@ -596,9 +603,23 @@ WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VE
     wrun_stack_init(&stack);
     wrun_stack_push_dummy_frame(&stack);
 
+    VEC(WasmValue) locals;
+    vec_init(&locals);
+
     WasmFuncInst *finst = vec_at(&store->funcs, sizeof(WasmFuncInst), funcaddr - 1);
+
+    for (size_t i = 0; i < args->len; i++) {
+        WasmValue *local = vec_at(args, sizeof(WasmValue), i);
+        vec_push_back(&locals, sizeof(WasmValue), local);
+    }
+    for (size_t i = 0; i < finst->val.wasmfunc.func->locals.len; i++) {
+        WasmValue local;
+        WasmValueType *localtype = vec_at(&finst->val.wasmfunc.func->locals, sizeof(WasmValueType), i);
+        wrun_value_default(*localtype, &local);
+        vec_push_back(&locals, sizeof(WasmValue), &local);
+    }
     uint32_t out_arity = finst->functype.output_type.len;
-    wrun_stack_push_frame(&stack, finst->val.wasmfunc.module, args, out_arity);
+    wrun_stack_push_frame(&stack, finst->val.wasmfunc.module, &locals, out_arity);
     WasmLabel label = {
         .argument_arity = out_arity,
         .instr = NULL
