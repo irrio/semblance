@@ -590,6 +590,8 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
             }
             case WasmOpNop:
                 break;
+            case WasmOpUnreachable:
+                return Trap;
             case WasmOpExprEnd:
                 return Ok;
             default:
