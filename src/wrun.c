@@ -588,6 +588,8 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 wdata->len = 0;
                 break;
             }
+            case WasmOpNop:
+                break;
             case WasmOpExprEnd:
                 return Ok;
             default:
