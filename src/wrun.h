@@ -33,6 +33,7 @@ typedef union {
 } WasmValue;
 
 void wrun_value_default(WasmValueType valtype, WasmValue *value);
+void wrun_value_dump(WasmValueType valtype, WasmValue *value);
 
 typedef enum {
     Ok,
@@ -44,7 +45,14 @@ typedef struct {
     VEC(WasmValue) values;
 } WasmResult;
 
+typedef struct {
+    WasmResultType result_type;
+    WasmResult result;
+} DynamicWasmResult;
+
 void wrun_result_init(WasmResult *result);
+void wrun_result_dump(WasmResult *result, WasmResultType *type);
+void wrun_result_dump_dynamic(DynamicWasmResult *result);
 
 typedef enum {
     WasmExternValFunc,
@@ -189,4 +197,4 @@ WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstructio
 WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr);
 
 WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name);
-WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store);
+DynamicWasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store);

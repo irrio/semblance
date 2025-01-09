@@ -53,9 +53,8 @@ int main(int argc, char *argv[]) {
     assert(export.kind == WasmExternValFunc);
     VEC(WasmValue) fn_args;
     vec_init(&fn_args);
-    WasmResult wres = wrun_invoke_func(winst, export.val.func, &fn_args, &store);
+    DynamicWasmResult wres = wrun_invoke_func(winst, export.val.func, &fn_args, &store);
+    wrun_result_dump_dynamic(&wres);
 
-    printf("hello returned %zu values!\n", wres.values.len);
-
-    return 0;
+    return wres.result.kind != Ok;
 }

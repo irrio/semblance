@@ -10,6 +10,40 @@
 
 const u_int32_t WMEM_PAGE_SIZE = 65536;
 
+void wrun_result_kind_dump(WasmResultKind wrkind) {
+    switch (wrkind) {
+        case Ok:
+            printf("Ok");
+            break;
+        case Trap:
+            printf("TRAP!");
+            break;
+    }
+}
+
+void wrun_result_dump(WasmResult *wres, WasmResultType *type) {
+    wrun_result_kind_dump(wres->kind);
+    if (wres->kind == Trap) {
+        printf("\n");
+        return;
+    }
+    size_t len = wres->values.len;
+    printf(" [");
+    for (size_t i = 0; i < len; i++) {
+        WasmValue *wval = vec_at(&wres->values, sizeof(WasmValue), i);
+        WasmValueType *valtype = vec_at(type, sizeof(WasmValueType), i);
+        wrun_value_dump(*valtype, wval);
+        if (i != len - 1) {
+            printf(", ");
+        }
+    }
+    printf("]\n");
+}
+
+void wrun_result_dump_dynamic(DynamicWasmResult *result) {
+    return wrun_result_dump(&result->result, &result->result_type);
+}
+
 void wrun_num_default(WasmNumType numtype, WasmNumValue *num) {
     switch (numtype) {
         case WasmNumI32:
@@ -49,6 +83,36 @@ void wrun_value_default(WasmValueType valtype, WasmValue *value) {
             return wrun_ref_default(valtype.value.ref, &value->ref);
         case WasmValueTypeVec:
             return wrun_vec_default(valtype.value.vec, &value->vec);
+    }
+}
+
+void wrun_value_dump_num(WasmNumType numtype, WasmNumValue *wval) {
+    switch (numtype) {
+        case WasmNumF32:
+            printf("%f", wval->f32);
+            break;
+        case WasmNumF64:
+            printf("%f", wval->f64);
+            break;
+        case WasmNumI32:
+            printf("%d", wval->i32);
+            break;
+        case WasmNumI64:
+            printf("%lld", wval->i64);
+            break;
+    }
+}
+
+void wrun_value_dump(WasmValueType valtype, WasmValue *wval) {
+    switch (valtype.kind) {
+        case WasmValueTypeNum:
+            return wrun_value_dump_num(valtype.value.num, &wval->num);
+        case WasmValueTypeRef:
+            printf("REF");
+            break;
+        case WasmValueTypeVec:
+            printf("VEC");
+            break;
     }
 }
 
@@ -474,6 +538,15 @@ WasmActivation *wrun_stack_find_current_frame(WasmStack *stack) {
     assert(false); // unreachable: no activation frame!
 }
 
+WasmStackEntryKind wrun_stack_peek_kind(WasmStack *stack) {
+    size_t len = stack->entries.len;
+    if (len > 0) {
+        WasmStackEntry *peek = vec_at(&stack->entries, sizeof(WasmStackEntry), len - 1);
+        return peek->kind;
+    }
+    assert(false); // unreachable: stack empty!
+}
+
 bool wrun_stack_pop(WasmStack *stack, WasmStackEntry *out) {
     return vec_pop_back(&stack->entries, sizeof(WasmStackEntry), out);
 }
@@ -592,6 +665,27 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 break;
             case WasmOpUnreachable:
                 return Trap;
+            case WasmOpReturn: {
+                VEC(WasmValue) vals;
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                uint32_t n = frame->return_arity;
+                vec_free(&frame->locals);
+                vec_init_with_capacity(&vals, sizeof(WasmValue), n);
+                for (size_t i = 0; i < n; i++) {
+                    WasmValue wval;
+                    wrun_stack_pop_val(stack, &wval);
+                    vec_push_back(&vals, sizeof(WasmValue), &wval);
+                }
+                while (wrun_stack_peek_kind(stack) != WasmStackEntryActivation) {
+                    wrun_stack_pop_and_drop(stack);
+                }
+                wrun_stack_pop_and_drop(stack);
+                for (size_t i = 0; i < n; i++) {
+                    wrun_stack_push_val(stack, vec_at(&vals, sizeof(WasmValue), n - (i + 1)));
+                }
+                vec_free(&vals);
+                break;
+            }
             case WasmOpExprEnd:
                 return Ok;
             default:
@@ -613,10 +707,10 @@ WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name) {
     assert(false); // export not found
 }
 
-WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store) {
-    WasmResult out;
-    out.kind = Ok;
-    vec_init(&out.values);
+DynamicWasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store) {
+    DynamicWasmResult out;
+    out.result.kind = Ok;
+    vec_init(&out.result.values);
 
     WasmStack stack;
     wrun_stack_init(&stack);
@@ -626,6 +720,7 @@ WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VE
     vec_init(&locals);
 
     WasmFuncInst *finst = vec_at(&store->funcs, sizeof(WasmFuncInst), funcaddr - 1);
+    out.result_type = finst->functype.output_type;
 
     for (size_t i = 0; i < args->len; i++) {
         WasmValue *local = vec_at(args, sizeof(WasmValue), i);
@@ -645,11 +740,11 @@ WasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VE
     };
     wrun_stack_push_label(&stack, &label);
 
-    out.kind = wrun_exec_expr(store, &stack, finst->val.wasmfunc.func->body.ptr);
+    out.result.kind = wrun_exec_expr(store, &stack, finst->val.wasmfunc.func->body.ptr);
     for (size_t i = 0; i < out_arity; i++) {
         WasmValue val;
         wrun_stack_pop_val(&stack, &val);
-        vec_push_back(&out.values, sizeof(WasmValue), &val);
+        vec_push_back(&out.result.values, sizeof(WasmValue), &val);
     }
 
     return out;
