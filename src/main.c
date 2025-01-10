@@ -49,10 +49,14 @@ int main(int argc, char *argv[]) {
     vec_init(&imports);
     WasmModuleInst *winst = wrun_instantiate_module(&wmod, &store, &imports);
 
-    WasmExternVal export = wrun_resolve_export(winst, "hello");
+    WasmExternVal export = wrun_resolve_export(winst, "triple");
     assert(export.kind == WasmExternValFunc);
     VEC(WasmValue) fn_args;
     vec_init(&fn_args);
+    WasmValue arg1 = {
+        .num.i32 = 5
+    };
+    vec_push_back(&fn_args, sizeof(WasmValue), &arg1);
     DynamicWasmResult wres = wrun_invoke_func(winst, export.val.func, &fn_args, &store);
     wrun_result_dump_dynamic(&wres);
 
