@@ -1,4 +1,6 @@
 
-char *hello() {
-    return "Hello, World!";
+extern void puts(char *s);
+
+void hello() {
+    puts("Hello, World!");
 }

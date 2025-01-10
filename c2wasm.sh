@@ -7,8 +7,10 @@ OUT="$(basename $SRC .c).wasm"
 
 clang \
     --target=wasm32 \
+    -O3 \
     -nostdlib \
     -Wl,--no-entry \
     -Wl,--export-all \
+    -Wl,--allow-undefined \
     -o "$OUT" \
     "$SRC"
