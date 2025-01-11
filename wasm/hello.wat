@@ -9,7 +9,7 @@
   )
   (memory (;0;) 2)
   (global (;0;) i32 i32.const 1024)
-  (global (;1;) i32 i32.const 1038)
+  (global (;1;) i32 i32.const 1039)
   (global (;2;) i32 i32.const 1040)
   (global (;3;) i32 i32.const 66576)
   (global (;4;) i32 i32.const 1024)
@@ -29,7 +29,7 @@
   (export "__heap_end" (global 6))
   (export "__memory_base" (global 7))
   (export "__table_base" (global 8))
-  (data (;0;) (i32.const 1024) "Hello, World!")
+  (data (;0;) (i32.const 1024) "Hello, World!\0a")
   (@producers
     (processed-by "Homebrew clang" "18.1.8")
   )

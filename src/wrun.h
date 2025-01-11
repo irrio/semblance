@@ -138,7 +138,10 @@ typedef struct {
     VEC(WasmDataInst) datas;
 } WasmStore;
 
+typedef VEC(WasmValue) (*WasmHostFunc) (WasmStore*, VEC(WasmValue)*);
+
 void wrun_store_init(WasmStore *store);
+wasm_func_addr_t wrun_store_alloc_hostfunc(WasmStore *store, WasmFuncType functype, WasmHostFunc fptr);
 wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, WasmFunc *func);
 wasm_table_addr_t wrun_store_alloc_table(WasmStore *store, WasmTable *table, WasmRefValue initval);
 wasm_mem_addr_t wrun_store_alloc_mem(WasmStore *store, WasmMemType *mem);

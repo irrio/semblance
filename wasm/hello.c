@@ -2,5 +2,5 @@
 extern void puts(char *s);
 
 void hello() {
-    puts("Hello, World!");
+    puts("Hello, World!\n");
 }

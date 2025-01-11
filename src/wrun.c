@@ -129,6 +129,14 @@ void wrun_store_init(WasmStore *store) {
     vec_init(&store->datas);
 }
 
+wasm_func_addr_t wrun_store_alloc_hostfunc(WasmStore *store, WasmFuncType functype, WasmHostFunc fptr) {
+    WasmFuncInst finst;
+    finst.kind = WasmFuncInstHost;
+    finst.functype = functype;
+    finst.val.hostfunc = fptr;
+    return vec_push_back(&store->funcs, sizeof(WasmFuncInst), &finst) + 1;
+}
+
 wasm_func_addr_t wrun_store_alloc_func(WasmStore *store, WasmModuleInst *winst, WasmFunc *func) {
     WasmFuncInst finst;
     finst.functype = winst->types[func->type_idx];
@@ -684,6 +692,35 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                     wrun_stack_push_val(stack, vec_at(&vals, sizeof(WasmValue), n - (i + 1)));
                 }
                 vec_free(&vals);
+                break;
+            }
+            case WasmOpCall: {
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                wasm_func_idx_t funcidx = ip->params.call.funcidx;
+                wasm_func_addr_t funcaddr = *(wasm_func_addr_t*)vec_at(&frame->inst->funcaddrs, sizeof(wasm_func_addr_t), funcidx);
+                WasmFuncInst *finst = vec_at(&store->funcs, sizeof(WasmFuncInst), funcaddr - 1);
+                switch (finst->kind) {
+                    case WasmFuncInstWasm:
+                        return Trap; // Unimplemented wasm call
+                    case WasmFuncInstHost: {
+                        size_t numargs = finst->functype.input_type.len;
+                        VEC(WasmValue) args;
+                        vec_init_with_capacity(&args, sizeof(WasmValue), numargs);
+                        for (size_t i = 0; i < numargs; i++) {
+                            WasmValue argval;
+                            wrun_stack_pop_val(stack, &argval);
+                            vec_push_back(&args, sizeof(WasmValue), &argval);
+                        }
+                        VEC(WasmValue) ret = ((WasmHostFunc)finst->val.hostfunc)(store, &args);
+                        for (size_t i = 0; i < ret.len; i++) {
+                            WasmValue *retval = vec_at(&ret, sizeof(WasmValue), i);
+                            wrun_stack_push_val(stack, retval);
+                        }
+                        vec_free(&args);
+                        vec_free(&ret);
+                        break;
+                    }
+                }
                 break;
             }
             case WasmOpExprEnd:

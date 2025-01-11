@@ -33,6 +33,38 @@ void wbin_read_module_or_exit(CliArgs *args, WasmModule *wmod) {
     }
 }
 
+VEC(WasmValue) hostcall_puts(WasmStore *store, VEC(WasmValue) *args) {
+    VEC(WasmValue) out;
+    vec_init(&out);
+
+    WasmValue *arg = args->ptr;
+    int32_t offset = arg[0].num.i32;
+
+    WasmMemInst *mem = store->mems.ptr;
+    void *data = mem[0].data.ptr;
+
+    printf("%s", (char*)(data + offset));
+
+    return out;
+}
+
+WasmExternVal register_hostcall_puts(WasmStore *store) {
+    WasmFuncType puts_type;
+    vec_init(&puts_type.input_type);
+    WasmValueType arg1 = {
+        .kind = WasmValueTypeNum,
+        .value.num = WasmNumI32
+    };
+    vec_push_back(&puts_type.input_type, sizeof(WasmValueType), &arg1);
+    vec_init(&puts_type.output_type);
+    wasm_func_addr_t putsaddr = wrun_store_alloc_hostfunc(store, puts_type, hostcall_puts);
+    WasmExternVal out = {
+        .kind = WasmExternValFunc,
+        .val.func = putsaddr
+    };
+    return out;
+}
+
 int main(int argc, char *argv[]) {
 
     CliArgs args;
@@ -45,11 +77,21 @@ int main(int argc, char *argv[]) {
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
 
+    for (size_t i = 0; i < wmod.imports.len; i++) {
+        WasmImport *import = vec_at(&wmod.imports, sizeof(WasmImport), i);
+        wmod_dump_name(&import->module_name);
+        printf("::");
+        wmod_dump_name(&import->item_name);
+        printf("\n");
+    }
+
     VEC(WasmExternVal) imports;
     vec_init(&imports);
+    WasmExternVal func_puts = register_hostcall_puts(&store);
+    vec_push_back(&imports, sizeof(WasmExternVal), &func_puts);
     WasmModuleInst *winst = wrun_instantiate_module(&wmod, &store, &imports);
 
-    WasmExternVal export = wrun_resolve_export(winst, "fib");
+    WasmExternVal export = wrun_resolve_export(winst, "hello");
     assert(export.kind == WasmExternValFunc);
     VEC(WasmValue) fn_args;
     vec_init(&fn_args);
