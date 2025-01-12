@@ -581,7 +581,7 @@ WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstructio
 WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr) {
     WasmInstruction* ip = expr;
     while (true) {
-        printf("EXEC OPCODE: %s\n", wmod_str_opcode(ip->opcode));
+        //printf("EXEC OPCODE: %s\n", wmod_str_opcode(ip->opcode));
         switch (ip->opcode) {
             case WasmOpI32Const:
                 wrun_stack_push_i32(stack, ip->params._const.value.i32);

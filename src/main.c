@@ -77,13 +77,13 @@ int main(int argc, char *argv[]) {
     cli_parse_or_exit(&args, argc, argv);
     wbin_read_module_or_exit(&args, &wmod);
 
-    for (size_t i = 0; i < wmod.imports.len; i++) {
-        WasmImport *import = vec_at(&wmod.imports, sizeof(WasmImport), i);
-        wmod_dump_name(&import->module_name);
-        printf("::");
-        wmod_dump_name(&import->item_name);
-        printf("\n");
-    }
+    //for (size_t i = 0; i < wmod.imports.len; i++) {
+    //    WasmImport *import = vec_at(&wmod.imports, sizeof(WasmImport), i);
+    //    wmod_dump_name(&import->module_name);
+    //    printf("::");
+    //    wmod_dump_name(&import->item_name);
+    //    printf("\n");
+    //}
 
     VEC(WasmExternVal) imports;
     vec_init(&imports);
