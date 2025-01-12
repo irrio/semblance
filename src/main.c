@@ -75,6 +75,12 @@ int main(int argc, char *argv[]) {
     wrun_store_init(&store);
 
     cli_parse_or_exit(&args, argc, argv);
+
+    if (args.help) {
+        printf("%s\n", cli_usage_str());
+        return 0;
+    }
+
     wbin_read_module_or_exit(&args, &wmod);
 
     //for (size_t i = 0; i < wmod.imports.len; i++) {
@@ -91,7 +97,7 @@ int main(int argc, char *argv[]) {
     vec_push_back(&imports, sizeof(WasmExternVal), &func_puts);
     WasmModuleInst *winst = wrun_instantiate_module(&wmod, &store, &imports);
 
-    WasmExternVal export = wrun_resolve_export(winst, "hello");
+    WasmExternVal export = wrun_resolve_export(winst, args.invoke);
     assert(export.kind == WasmExternValFunc);
     VEC(WasmValue) fn_args;
     vec_init(&fn_args);

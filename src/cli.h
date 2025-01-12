@@ -1,6 +1,12 @@
 
+#pragma once
+
+#include <stdbool.h>
+
 typedef struct {
     char *path;
+    char *invoke;
+    bool help;
 } CliArgs;
 
 int cli_parse(CliArgs *args, int argc, char *argv[]);
