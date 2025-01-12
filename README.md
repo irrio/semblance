@@ -10,8 +10,8 @@ the result of that. As such, this is not production quality software. There are 
 places where I've skipped input validation in an effort to move forward quickly.
 One should be careful to only evaluate trusted WebAssembly modules with this interpreter.
 
-I'm still a far way off from implementing every opcode. I doubt it will
-ever get that far. But I've made enough progress that simple `Hello, World`
+I'm still a far way off from implementing [every opcode](https://webassembly.github.io/spec/core/syntax/instructions.html).
+I doubt it will ever get that far. But I've made enough progress that simple `Hello, World`
 programs will run without issue.
 
 ## Build Instructions
