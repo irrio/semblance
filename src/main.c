@@ -100,10 +100,6 @@ int main(int argc, char *argv[]) {
     assert(export.kind == WasmExternValFunc);
     VEC(WasmValue) fn_args;
     vec_init(&fn_args);
-    WasmValue arg1 = {
-        .num.i32 = 3
-    };
-    vec_push_back(&fn_args, sizeof(WasmValue), &arg1);
     DynamicWasmResult wres = wrun_invoke_func(winst, export.val.func, &fn_args, &store);
     wrun_result_dump_dynamic(&wres);
 
