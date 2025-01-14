@@ -570,6 +570,15 @@ bool wrun_stack_pop_val(WasmStack *stack, WasmValue *out) {
     return popped;
 }
 
+size_t wrun_expand_blocktype_arity(WasmModuleInst *winst, WasmBlockType *blocktype) {
+    switch (blocktype->kind) {
+        case WasmBlockTypeEmpty: return 0;
+        case WasmBlockTypeVal: return 1;
+        case WasmBlockTypeIdx:
+            return winst->types[blocktype->value.typeidx].output_type.len;
+    }
+}
+
 WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr, WasmValue *wval) {
     WasmResultKind res = wrun_exec_expr(store, stack, expr);
     if (res == Ok) {
@@ -749,6 +758,21 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 }
                 vec_free(&args);
                 break;
+            }
+            case WasmOpIf: {
+                WasmActivation *frame = wrun_stack_find_current_frame(stack);
+                size_t out_arity = wrun_expand_blocktype_arity(frame->inst, &ip->params._if.blocktype);
+                WasmValue test;
+                wrun_stack_pop_val(stack, &test);
+                WasmLabel label = {
+                    .argument_arity = out_arity,
+                    .instr = ip + 1
+                };
+                wrun_stack_push_label(stack, &label);
+                ip = test.num.i32
+                    ? ip->params._if.then_body.ptr
+                    : ip->params._if.else_body.ptr;
+                continue;
             }
             case WasmOpExprEnd:
                 return Ok;
