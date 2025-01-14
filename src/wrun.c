@@ -699,28 +699,44 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 wasm_func_idx_t funcidx = ip->params.call.funcidx;
                 wasm_func_addr_t funcaddr = *(wasm_func_addr_t*)vec_at(&frame->inst->funcaddrs, sizeof(wasm_func_addr_t), funcidx);
                 WasmFuncInst *finst = vec_at(&store->funcs, sizeof(WasmFuncInst), funcaddr - 1);
+                size_t numargs = finst->functype.input_type.len;
+                VEC(WasmValue) args;
+                vec_init_with_capacity(&args, sizeof(WasmValue), numargs);
+                for (size_t i = 0; i < numargs; i++) {
+                    WasmValue argval;
+                    wrun_stack_pop_val(stack, &argval);
+                    vec_push_back(&args, sizeof(WasmValue), &argval);
+                }
                 switch (finst->kind) {
-                    case WasmFuncInstWasm:
-                        return Trap; // Unimplemented wasm call
-                    case WasmFuncInstHost: {
-                        size_t numargs = finst->functype.input_type.len;
-                        VEC(WasmValue) args;
-                        vec_init_with_capacity(&args, sizeof(WasmValue), numargs);
-                        for (size_t i = 0; i < numargs; i++) {
-                            WasmValue argval;
-                            wrun_stack_pop_val(stack, &argval);
-                            vec_push_back(&args, sizeof(WasmValue), &argval);
+                    case WasmFuncInstWasm: {
+                        VEC(WasmValueType) *locals = &finst->val.wasmfunc.func->locals;
+                        for (size_t i = 0; i < locals->len; i++) {
+                            WasmValue local;
+                            WasmValueType *localtype = vec_at(&finst->val.wasmfunc.func->locals, sizeof(WasmValueType), i);
+                            wrun_value_default(*localtype, &local);
+                            vec_push_back(&args, sizeof(WasmValue), &local);
                         }
+                        uint32_t out_arity = finst->functype.output_type.len;
+                        wrun_stack_push_frame(stack, finst->val.wasmfunc.module, &args, out_arity);
+                        WasmLabel label = {
+                            .argument_arity = out_arity,
+                            .instr = NULL
+                        };
+                        wrun_stack_push_label(stack, &label);
+                        ip = finst->val.wasmfunc.func->body.ptr;
+                        continue;
+                    }
+                    case WasmFuncInstHost: {
                         VEC(WasmValue) ret = ((WasmHostFunc)finst->val.hostfunc)(store, &args);
                         for (size_t i = 0; i < ret.len; i++) {
                             WasmValue *retval = vec_at(&ret, sizeof(WasmValue), i);
                             wrun_stack_push_val(stack, retval);
                         }
-                        vec_free(&args);
                         vec_free(&ret);
                         break;
                     }
                 }
+                vec_free(&args);
                 break;
             }
             case WasmOpExprEnd:
@@ -734,10 +750,9 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
 }
 
 WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name) {
-    size_t slen = strlen(name);
     for (size_t i = 0; i < winst->exports.len; i++) {
         WasmExportInst *wexp = vec_at(&winst->exports, sizeof(WasmExportInst), i);
-        if (slen == wexp->name.len && memcmp(wexp->name.bytes, name, slen) == 0) {
+        if (wmod_name_eq(&wexp->name, name)) {
             return wexp->val;
         }
     }

@@ -1,6 +1,7 @@
 (module
   (type (;0;) (func))
   (type (;1;) (func (param i32) (result i32)))
+  (type (;2;) (func (result i32)))
   (func (;0;) (type 0))
   (func (;1;) (type 1) (param i32) (result i32)
     (local i32)
@@ -39,6 +40,10 @@
       i32.const 2
     end
   )
+  (func (;2;) (type 2) (result i32)
+    i32.const 5
+    call 1
+  )
   (memory (;0;) 2)
   (global (;0;) i32 i32.const 1024)
   (global (;1;) i32 i32.const 1024)
@@ -52,6 +57,7 @@
   (export "memory" (memory 0))
   (export "__wasm_call_ctors" (func 0))
   (export "fib" (func 1))
+  (export "run" (func 2))
   (export "__dso_handle" (global 0))
   (export "__data_end" (global 1))
   (export "__stack_low" (global 2))

@@ -2,6 +2,7 @@
 #include "wmod.h"
 #include "vec.h"
 #include <stdio.h>
+#include <string.h>
 
 void wmod_init(WasmModule *wmod) {
     vec_init(&wmod->types);
@@ -534,6 +535,11 @@ void wmod_dump(WasmModule *wmod) {
 void wmod_name_init(WasmName *name) {
     name->len = 0;
     name->bytes = NULL;
+}
+
+bool wmod_name_eq(WasmName *name, char *str) {
+    size_t slen = strlen(str);
+    return slen == name->len && memcmp(name->bytes, str, slen) == 0;
 }
 
 void wmod_func_type_init(WasmFuncType *type) {

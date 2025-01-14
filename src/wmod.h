@@ -580,6 +580,7 @@ void wmod_dump(WasmModule *wmod);
 void wmod_dump_name(WasmName *name);
 
 void wmod_name_init(WasmName *name);
+bool wmod_name_eq(WasmName *name, char *str);
 void wmod_func_type_init(WasmFuncType *type);
 void wmod_func_init(WasmFunc *func);
 void wmod_global_init(WasmGlobal *global);

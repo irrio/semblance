@@ -83,18 +83,17 @@ int main(int argc, char *argv[]) {
 
     wbin_read_module_or_exit(&args, &wmod);
 
-    //for (size_t i = 0; i < wmod.imports.len; i++) {
-    //    WasmImport *import = vec_at(&wmod.imports, sizeof(WasmImport), i);
-    //    wmod_dump_name(&import->module_name);
-    //    printf("::");
-    //    wmod_dump_name(&import->item_name);
-    //    printf("\n");
-    //}
-
     VEC(WasmExternVal) imports;
     vec_init(&imports);
-    WasmExternVal func_puts = register_hostcall_puts(&store);
-    vec_push_back(&imports, sizeof(WasmExternVal), &func_puts);
+
+    for (size_t i = 0; i < wmod.imports.len; i++) {
+        WasmImport *import = vec_at(&wmod.imports, sizeof(WasmImport), i);
+        if (wmod_name_eq(&import->module_name, "env") && wmod_name_eq(&import->item_name, "puts")) {
+            WasmExternVal func_puts = register_hostcall_puts(&store);
+            vec_push_back(&imports, sizeof(WasmExternVal), &func_puts);
+        }
+    }
+
     WasmModuleInst *winst = wrun_instantiate_module(&wmod, &store, &imports);
 
     WasmExternVal export = wrun_resolve_export(winst, args.invoke);
