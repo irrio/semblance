@@ -5,7 +5,7 @@
 #include "vec.h"
 #include "wmod.h"
 
-typedef u_int32_t wasm_addr_t;
+typedef uint32_t wasm_addr_t;
 
 typedef wasm_addr_t wasm_func_addr_t;
 typedef wasm_addr_t wasm_table_addr_t;
@@ -22,7 +22,7 @@ typedef union {
     double f64;
 } WasmNumValue;
 
-typedef u_int8_t WasmVecValue [8];
+typedef uint8_t WasmVecValue [8];
 
 typedef wasm_addr_t WasmRefValue;
 
@@ -125,7 +125,7 @@ typedef struct {
 } WasmElemInst;
 
 typedef struct {
-    u_int8_t *bytes;
+    uint8_t *bytes;
     size_t len;
 } WasmDataInst;
 
@@ -161,12 +161,12 @@ WasmModuleInst *wrun_store_alloc_module(WasmStore *store, WasmModule *wmod, Wasm
 WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(WasmExternVal) *imports);
 
 typedef struct {
-    u_int32_t argument_arity;
+    uint32_t argument_arity;
     WasmInstruction *instr;
 } WasmLabel;
 
 typedef struct {
-    u_int32_t return_arity;
+    uint32_t return_arity;
     VEC(WasmValue) locals;
     WasmModuleInst *inst;
 } WasmActivation;

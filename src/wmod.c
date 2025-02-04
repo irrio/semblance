@@ -615,7 +615,7 @@ void wmod_push_back_export(WasmModule *wmod, WasmExport *exp) {
     vec_push_back(&wmod->exports, sizeof(WasmExport), exp);
 }
 
-void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *valtype) {
+void wmod_func_push_back_locals(WasmFunc *func, uint32_t n, WasmValueType *valtype) {
     while (n > 0) {
         vec_push_back(&func->locals, sizeof(WasmValueType), valtype);
         n--;

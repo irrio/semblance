@@ -4,24 +4,22 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <sys/_types/_u_int32_t.h>
-#include <sys/_types/_u_int8_t.h>
 #include "vec.h"
 
-typedef u_int32_t wasm_func_idx_t;
-typedef u_int32_t wasm_type_idx_t;
-typedef u_int32_t wasm_label_idx_t;
-typedef u_int32_t wasm_global_idx_t;
-typedef u_int32_t wasm_local_idx_t;
-typedef u_int32_t wasm_table_idx_t;
-typedef u_int32_t wasm_elem_idx_t;
-typedef u_int32_t wasm_data_idx_t;
-typedef u_int32_t wasm_mem_idx_t;
+typedef uint32_t wasm_func_idx_t;
+typedef uint32_t wasm_type_idx_t;
+typedef uint32_t wasm_label_idx_t;
+typedef uint32_t wasm_global_idx_t;
+typedef uint32_t wasm_local_idx_t;
+typedef uint32_t wasm_table_idx_t;
+typedef uint32_t wasm_elem_idx_t;
+typedef uint32_t wasm_data_idx_t;
+typedef uint32_t wasm_mem_idx_t;
 
 typedef struct {
-    u_int32_t min;
+    uint32_t min;
     bool bounded;
-    u_int32_t max;
+    uint32_t max;
 } WasmLimits;
 
 typedef enum {
@@ -148,8 +146,8 @@ typedef struct {
 } WasmElemDropParams;
 
 typedef struct {
-    u_int32_t align;
-    u_int32_t offset;
+    uint32_t align;
+    uint32_t offset;
 } WasmMemArg;
 
 typedef struct {
@@ -428,7 +426,7 @@ typedef VEC(WasmMemType) WasmMems;
 
 typedef struct {
     size_t len;
-    u_int8_t *bytes;
+    uint8_t *bytes;
 } WasmName;
 
 typedef enum {
@@ -517,8 +515,8 @@ typedef struct {
 } WasmDataMode;
 
 typedef struct {
-    u_int32_t len;
-    u_int8_t *bytes;
+    uint32_t len;
+    uint8_t *bytes;
     WasmDataMode datamode;
 } WasmData;
 
@@ -556,8 +554,8 @@ typedef VEC(WasmExport) WasmExports;
 typedef Vec WasmCustoms;
 
 typedef struct {
-    u_int32_t version;
-    u_int32_t datacount;
+    uint32_t version;
+    uint32_t datacount;
 } WasmMeta;
 
 typedef struct {
@@ -601,7 +599,7 @@ wasm_elem_idx_t wmod_push_back_elem(WasmModule *wmod, WasmElem *elem);
 void wmod_push_back_import(WasmModule *wmod, WasmImport *import);
 void wmod_push_back_export(WasmModule *wmod, WasmExport *exp);
 
-void wmod_func_push_back_locals(WasmFunc *func, u_int32_t n, WasmValueType *val);
+void wmod_func_push_back_locals(WasmFunc *func, uint32_t n, WasmValueType *val);
 void wmod_expr_push_back_instruction(WasmExpr *expr, WasmInstruction *ins);
 void wmod_elem_push_back_expr(WasmElem *elem, WasmExpr *expr);
 void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode);

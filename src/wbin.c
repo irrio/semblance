@@ -5,8 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/_types/_u_int32_t.h>
-#include <sys/_types/_u_int8_t.h>
 #include <sys/fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -34,19 +32,19 @@ WasmDecodeResult wbin_ok(void *next_data) {
     return out;
 }
 
-void *wbin_take_byte(void *data, u_int8_t *out) {
-    u_int8_t *bytes = data;
+void *wbin_take_byte(void *data, uint8_t *out) {
+    uint8_t *bytes = data;
     *out = bytes[0];
     return bytes + 1;
 }
 
-void *wbin_decode_leb128_64(void *data, u_int64_t *out) {
-    u_int8_t *bytes = data;
-    u_int32_t shift = 0;
+void *wbin_decode_leb128_64(void *data, uint64_t *out) {
+    uint8_t *bytes = data;
+    uint32_t shift = 0;
     size_t byte_idx = 0;
     *out = 0;
     while (true) {
-        u_int8_t byte = bytes[byte_idx];
+        uint8_t byte = bytes[byte_idx];
         *out |= (byte & ~(1 << 7)) << shift;
         if ((byte & (1 << 7)) == 0) {
             break;
@@ -59,10 +57,10 @@ void *wbin_decode_leb128_64(void *data, u_int64_t *out) {
 
 void *wbin_decode_leb128_signed_64(u_leb128_prefixed data, int64_t *out) {
     int64_t result = 0;
-    u_int32_t shift = 0;
+    uint32_t shift = 0;
 
     size_t idx = 0;
-    u_int8_t byte = data[idx];
+    uint8_t byte = data[idx];
     do {
         byte = data[idx];
         result |= (byte & ~(1 << 7)) << shift;
@@ -79,8 +77,8 @@ void *wbin_decode_leb128_signed_64(u_leb128_prefixed data, int64_t *out) {
     return data + idx;
 }
 
-void *wbin_decode_leb128(u_leb128_prefixed data, u_int32_t *out) {
-    u_int64_t full;
+void *wbin_decode_leb128(u_leb128_prefixed data, uint32_t *out) {
+    uint64_t full;
     data = wbin_decode_leb128_64(data, &full);
     *out = full;
     return data;
@@ -93,7 +91,7 @@ void *wbin_decode_leb128_signed(u_leb128_prefixed data, int32_t *out) {
     return data;
 }
 
-void *wbin_decode_leb128_signed_tag(void *data, u_int32_t *out) {
+void *wbin_decode_leb128_signed_tag(void *data, uint32_t *out) {
     int64_t full;
     data = wbin_decode_leb128_signed_64(data, &full);
     *out = full;
@@ -101,7 +99,7 @@ void *wbin_decode_leb128_signed_tag(void *data, u_int32_t *out) {
 }
 
 WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     switch (tag) {
         case 0x70:
@@ -117,7 +115,7 @@ WasmDecodeResult wbin_decode_reftype(void *data, WasmRefType *out) {
 }
 
 WasmDecodeResult wbin_decode_val_type(void *data, WasmValueType *out) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     switch (tag) {
         case 0x7F:
@@ -155,7 +153,7 @@ WasmDecodeResult wbin_decode_val_type(void *data, WasmValueType *out) {
 }
 
 WasmDecodeResult wbin_decode_result_type(void *data, WasmResultType *out) {
-    u_int32_t len = 0;
+    uint32_t len = 0;
     data = wbin_decode_leb128(data, &len);
     while (len > 0) {
         WasmValueType valtype;
@@ -169,7 +167,7 @@ WasmDecodeResult wbin_decode_result_type(void *data, WasmResultType *out) {
 }
 
 WasmDecodeResult wbin_decode_type(void *data, WasmFuncType *out) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     if (tag != 0x60) return wbin_err(WasmDecodeErrInvalidType, 0);
     WasmDecodeResult input_result = wbin_decode_result_type(data, &out->input_type);
@@ -178,7 +176,7 @@ WasmDecodeResult wbin_decode_type(void *data, WasmFuncType *out) {
 }
 
 WasmDecodeResult wbin_decode_types(void *data, WasmModule *wmod) {
-    u_int32_t len = 0;
+    uint32_t len = 0;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -195,7 +193,7 @@ WasmDecodeResult wbin_decode_types(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_funcs(void *data, WasmModule *wmod) {
-    u_int32_t len = 0;
+    uint32_t len = 0;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -210,7 +208,7 @@ WasmDecodeResult wbin_decode_funcs(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_limits(void *data, WasmLimits *limits) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     switch (tag) {
         case 0x00:
@@ -237,7 +235,7 @@ WasmDecodeResult wbin_decode_table(void *data, WasmTable *table) {
 }
 
 WasmDecodeResult wbin_decode_tables(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -257,7 +255,7 @@ WasmDecodeResult wbin_decode_mem(void* data, WasmMemType *mem) {
 }
 
 WasmDecodeResult wbin_decode_mems(void* data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -272,7 +270,7 @@ WasmDecodeResult wbin_decode_mems(void* data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_name(void* data,  WasmName *name) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
     name->len = len;
     name->bytes = data;
@@ -280,7 +278,7 @@ WasmDecodeResult wbin_decode_name(void* data,  WasmName *name) {
 }
 
 WasmDecodeResult wbin_decode_global_mutability(void *data, WasmGlobalMutability *mut) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     switch (tag) {
         case 0x00:
@@ -303,7 +301,7 @@ WasmDecodeResult wbin_decode_global_type(void *data, WasmGlobalType *global) {
 }
 
 WasmDecodeResult wbin_decode_import_desc(void *data, WasmImportDesc *desc) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     switch (tag) {
         case 0x00:
@@ -334,7 +332,7 @@ WasmDecodeResult wbin_decode_import(void *data, WasmImport *import) {
 }
 
 WasmDecodeResult wbin_decode_imports(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -351,7 +349,7 @@ WasmDecodeResult wbin_decode_imports(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_export_desc(void *data, WasmExportDesc *desc) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
     switch (tag) {
         case 0x00:
@@ -379,7 +377,7 @@ WasmDecodeResult wbin_decode_export(void *data, WasmExport *exp) {
 }
 
 WasmDecodeResult wbin_decode_exports(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -402,10 +400,10 @@ WasmDecodeResult wbin_decode_start(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_locals(void *data, WasmFunc *func) {
-    u_int32_t len;
+    uint32_t len;
     data =  wbin_decode_leb128(data, &len);
     for (size_t i = 0; i < len; i++) {
-        u_int32_t n;
+        uint32_t n;
         WasmValueType valtype;
         data = wbin_decode_leb128(data, &n);
         WasmDecodeResult val_result = wbin_decode_val_type(data, &valtype);
@@ -417,9 +415,9 @@ WasmDecodeResult wbin_decode_locals(void *data, WasmFunc *func) {
 }
 
 WasmDecodeResult wbin_decode_blocktype(void *data, WasmBlockType *blocktype) {
-    if (*(u_int8_t*)data == 0x40) {
+    if (*(uint8_t*)data == 0x40) {
         blocktype->kind = WasmBlockTypeEmpty;
-        return wbin_ok((u_int8_t*)data + 1);
+        return wbin_ok((uint8_t*)data + 1);
     }
     WasmDecodeResult val_result = wbin_decode_val_type(data, &blocktype->value.valtype);
     if (wbin_is_ok(val_result)) {
@@ -470,7 +468,7 @@ WasmDecodeResult wbin_decode_break(void *data, WasmBreakParams *br) {
 }
 
 WasmDecodeResult wbin_decode_break_table(void *data, WasmBreakTableParams *bt) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len > 0) {
@@ -497,7 +495,7 @@ WasmDecodeResult wbin_decode_call_indirect(void *data, WasmCallIndirectParams *c
 }
 
 WasmDecodeResult wbin_decode_val_types(void *data, VEC(WasmValueType) *valuetypes) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
     while (len-- > 0) {
         WasmValueType valtype;
@@ -510,7 +508,7 @@ WasmDecodeResult wbin_decode_val_types(void *data, VEC(WasmValueType) *valuetype
 }
 
 WasmDecodeResult wbin_decode_zero(void *data) {
-    u_int8_t byte;
+    uint8_t byte;
     data = wbin_take_byte(data, &byte);
     if (byte != 0) {
         return wbin_err(WasmDecodeErrExpectedZero, 0);
@@ -526,7 +524,7 @@ WasmDecodeResult wbin_decode_zeroes(void *data) {
 }
 
 WasmDecodeResult wbin_decode_extended_instr(void *data, WasmInstruction *ins) {
-    u_int32_t tag;
+    uint32_t tag;
     data = wbin_decode_leb128(data, &tag);
 
     switch (tag) {
@@ -626,7 +624,7 @@ WasmDecodeResult wbin_decode_f64(void *data, double *out) {
 }
 
 WasmDecodeResult wbin_decode_instr(void *data, WasmInstruction *ins) {
-    u_int8_t tag;
+    uint8_t tag;
     data = wbin_take_byte(data, &tag);
 
     switch (tag) {
@@ -1215,12 +1213,12 @@ WasmDecodeResult wbin_decode_code(void *data, WasmFunc *func) {
 }
 
 WasmDecodeResult wbin_decode_codes(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     WasmFunc *func = wmod->funcs.ptr;
     for (size_t i = 0; i < len; i++) {
-        u_int32_t code_len;
+        uint32_t code_len;
         data = wbin_decode_leb128(data, &code_len);
         WasmDecodeResult result = wbin_decode_code(data, &func[i]);
         if (!wbin_is_ok(result)) return result;
@@ -1238,7 +1236,7 @@ WasmDecodeResult wbin_decode_global(void *data, WasmGlobal *global) {
 }
 
 WasmDecodeResult wbin_decode_globals(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len-- > 0) {
@@ -1254,7 +1252,7 @@ WasmDecodeResult wbin_decode_globals(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_data(void *data, WasmData *wdata) {
-    u_int32_t tag;
+    uint32_t tag;
     data = wbin_decode_leb128(data, &tag);
 
     switch (tag) {
@@ -1290,7 +1288,7 @@ WasmDecodeResult wbin_decode_data(void *data, WasmData *wdata) {
 }
 
 WasmDecodeResult wbin_decode_datas(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len-- > 0) {
@@ -1310,7 +1308,7 @@ WasmDecodeResult wbin_decode_datacount(void *data, WasmModule *wmod) {
 }
 
 WasmDecodeResult wbin_decode_funcidx_refs(void *data, VEC(WasmExpr) *exprs) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len-- > 0) {
@@ -1334,7 +1332,7 @@ WasmDecodeResult wbin_decode_elemkind(void *data, WasmRefType *reftype) {
 }
 
 WasmDecodeResult wbin_decode_exprs(void *data, VEC(WasmExpr) *exprs) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len-- > 0) {
@@ -1350,7 +1348,7 @@ WasmDecodeResult wbin_decode_exprs(void *data, VEC(WasmExpr) *exprs) {
 }
 
 WasmDecodeResult wbin_decode_elem(void *data, WasmElem *elem) {
-    u_int32_t tag;
+    uint32_t tag;
     data = wbin_decode_leb128(data, &tag);
 
     switch (tag) {
@@ -1429,7 +1427,7 @@ WasmDecodeResult wbin_decode_elem(void *data, WasmElem *elem) {
 }
 
 WasmDecodeResult wbin_decode_elems(void *data, WasmModule *wmod) {
-    u_int32_t len;
+    uint32_t len;
     data = wbin_decode_leb128(data, &len);
 
     while (len-- > 0) {
@@ -1479,7 +1477,7 @@ WasmDecodeResult wbin_decode_section(WasmSectionId id, void *section, WasmModule
 
 WasmDecodeResult wbin_decode_sections(off_t size, WasmSectionHeader *section, WasmModule *wmod) {
     while (size > 0) {
-        u_int32_t len = 0;
+        uint32_t len = 0;
         void* data = wbin_decode_leb128(section->data, &len);
         WasmDecodeResult sec_result = wbin_decode_section(section->section_id, data, wmod);
         if (!wbin_is_ok(sec_result)) return sec_result;

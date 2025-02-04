@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include "wmod.h"
 
-typedef u_int8_t u_leb128_prefixed[];
+typedef uint8_t u_leb128_prefixed[];
 
 typedef enum __attribute__((packed)) {
     SectionIdCustom = 0,
@@ -31,8 +31,8 @@ typedef struct __attribute__((packed)) {
 } WasmSectionHeader;
 
 typedef struct __attribute__((packed)) {
-    u_int8_t magic_bytes[4];
-    u_int32_t version;
+    uint8_t magic_bytes[4];
+    uint32_t version;
     WasmSectionHeader sections[];
 } WasmHeader;
 

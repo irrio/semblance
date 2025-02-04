@@ -8,7 +8,7 @@
 #include <assert.h>
 #include <string.h>
 
-const u_int32_t WMEM_PAGE_SIZE = 65536;
+const uint32_t WMEM_PAGE_SIZE = 65536;
 
 void wrun_result_kind_dump(WasmResultKind wrkind) {
     switch (wrkind) {
@@ -415,7 +415,7 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
         switch (wdata->datamode.kind) {
             case WasmDataModeActive: {
                 assert(wdata->datamode.value.active.memidx == 0);
-                u_int32_t n = wdata->len;
+                uint32_t n = wdata->len;
                 wrun_exec_expr(store, &stack, wdata->datamode.value.active.offset_expr.ptr);
                 progbuf[0].opcode = WasmOpI32Const;
                 progbuf[0].params._const.value.i32 = 0;
@@ -513,7 +513,7 @@ size_t wrun_stack_push_ref(WasmStack *stack, wasm_addr_t ref) {
     return wrun_stack_push(stack, &entry);
 }
 
-size_t wrun_stack_push_frame(WasmStack *stack, WasmModuleInst *winst, VEC(WasmValue) *locals, u_int32_t arity) {
+size_t wrun_stack_push_frame(WasmStack *stack, WasmModuleInst *winst, VEC(WasmValue) *locals, uint32_t arity) {
     WasmStackEntry frame;
     frame.kind = WasmStackEntryActivation;
     frame.entry.activation.inst = winst;
