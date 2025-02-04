@@ -200,4 +200,4 @@ WasmResultKind wrun_eval_expr(WasmStore *store, WasmStack *stack, WasmInstructio
 WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstruction *expr);
 
 WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name);
-DynamicWasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store);
+DynamicWasmResult wrun_invoke_func(wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store);

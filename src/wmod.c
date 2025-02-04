@@ -653,5 +653,9 @@ void wmod_instr_init(WasmInstruction *instr, WasmOpcode opcode) {
 }
 
 WasmValidateResult wmod_validate(WasmModule *wmod) {
-    return WasmModuleOk;
+    if (wmod->meta.version == 1) {
+        return WasmModuleOk;
+    } else {
+        return WasmModuleInvalid;
+    }
 }

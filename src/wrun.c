@@ -62,7 +62,14 @@ void wrun_num_default(WasmNumType numtype, WasmNumValue *num) {
 }
 
 void wrun_ref_default(WasmRefType reftype, WasmRefValue *ref) {
-    *ref = 0;
+    switch (reftype) {
+        case WasmRefFunc:
+            *ref = 0;
+            break;
+        case WasmRefExtern:
+            *ref = 0;
+            break;
+    }
 }
 
 void wrun_vec_default(WasmVecType vectype, WasmVecValue *vec) {
@@ -211,8 +218,8 @@ wasm_elem_addr_t wrun_store_alloc_elem(WasmStore *store, WasmElem *elem, VEC(Was
 void wrun_store_alloc_elems(WasmStore *store, VEC(wasm_elem_addr_t) *elemaddrs, VEC(WasmElem) *elems, VEC(VEC(WasmRefValue)) *references) {
     for (size_t i = 0; i < elems->len; i++) {
         WasmElem *elem = elems->ptr + (i * sizeof(WasmElem));
-        Vec *references = vec_at(references, sizeof(Vec), i);
-        wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, references);
+        Vec *elemrefs = vec_at(references, sizeof(Vec), i);
+        wasm_elem_addr_t elemaddr = wrun_store_alloc_elem(store, elem, elemrefs);
         vec_push_back(elemaddrs, sizeof(wasm_elem_addr_t), &elemaddr);
     }
 }
@@ -365,6 +372,7 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
         WasmGlobal* global = vec_at(&wmod->globals, sizeof(WasmGlobal), i);
         WasmValue out;
         WasmResultKind res = wrun_eval_expr(store, &stack, global->init.ptr, &out);
+        assert(res != Trap);
         vec_push_back(&params.globalinit, sizeof(WasmValue), &out);
     }
 
@@ -372,6 +380,7 @@ WasmModuleInst *wrun_instantiate_module(WasmModule *wmod, WasmStore *store, VEC(
         WasmElem *elem = vec_at(&wmod->elems, sizeof(WasmElem), i);
         WasmValue out;
         WasmResultKind res = wrun_eval_expr(store, &stack, elem->init.ptr, &out);
+        assert(res != Trap);
         vec_push_back(&params.references, sizeof(WasmValue), &out);
     }
 
@@ -668,10 +677,10 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
                 wrun_stack_pop_val(stack, &s);
                 WasmValue d;
                 wrun_stack_pop_val(stack, &d);
-                if (s.num.i32 + n.num.i32 > data->len) {
+                if ((size_t)s.num.i32 + (size_t)n.num.i32 > data->len) {
                     return Trap;
                 }
-                if (d.num.i32 + n.num.i32 > mem->data.len) {
+                if ((size_t)d.num.i32 + (size_t)n.num.i32 > mem->data.len) {
                     return Trap;
                 }
                 if (n.num.i32 == 0) {
@@ -794,7 +803,7 @@ WasmExternVal wrun_resolve_export(WasmModuleInst *winst, char *name) {
     assert(false); // export not found
 }
 
-DynamicWasmResult wrun_invoke_func(WasmModuleInst *winst, wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store) {
+DynamicWasmResult wrun_invoke_func(wasm_func_addr_t funcaddr, VEC(WasmValue) *args, WasmStore *store) {
     DynamicWasmResult out;
     out.result.kind = Ok;
     vec_init(&out.result.values);

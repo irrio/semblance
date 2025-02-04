@@ -68,7 +68,7 @@ void *wbin_decode_leb128_signed_64(u_leb128_prefixed data, int64_t *out) {
         idx++;
     } while ((byte & (1 << 7)) != 0);
 
-    if ((shift < 64) && ((byte & 0x40) == 1)) {
+    if ((shift < 64) && ((byte & 0x40) != 0)) {
         result |= (~0 << shift);
     }
 
@@ -159,7 +159,7 @@ WasmDecodeResult wbin_decode_result_type(void *data, WasmResultType *out) {
         WasmValueType valtype;
         WasmDecodeResult valtype_result = wbin_decode_val_type(data, &valtype);
         if (!wbin_is_ok(valtype_result)) return valtype_result;
-        size_t idx = wmod_result_type_push_back(out, &valtype);
+        wmod_result_type_push_back(out, &valtype);
         data = valtype_result.value.next_data;
         len--;
     }
@@ -1496,7 +1496,7 @@ WasmDecodeResult wbin_read_module(char *path, WasmModule *wmod) {
     if (stat_err == -1) return wbin_err_io(errno);
 
     WasmHeader* data = mmap(NULL, stats.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if ((size_t) data == -1) return wbin_err_io(errno);
+    if ((ptrdiff_t) data == -1) return wbin_err_io(errno);
 
     int close_err = close(fd);
     if (close_err != 0) return wbin_err_io(errno);
