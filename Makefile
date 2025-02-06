@@ -27,4 +27,4 @@ run: target/semblance target/hello.wasm
 	./target/semblance target/hello.wasm --invoke hello
 
 clean:
-	rm -rf target/*
+	rm -rf target
