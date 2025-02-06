@@ -20,8 +20,11 @@ target/vec.o: src/vec.c src/vec.h target/
 target/:
 	mkdir -p target
 
-run: target/semblance
-	./target/semblance wasm/hello.wasm --invoke hello
+target/hello.wasm: target/
+	./c2wasm.sh wasm/hello.c
+
+run: target/semblance target/hello.wasm
+	./target/semblance target/hello.wasm --invoke hello
 
 clean:
 	rm -rf target/*

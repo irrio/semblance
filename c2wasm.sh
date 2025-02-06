@@ -12,5 +12,5 @@ clang \
     -Wl,--no-entry \
     -Wl,--export-all \
     -Wl,--allow-undefined \
-    -o "$OUT" \
+    -o "target/$OUT" \
     "$SRC"
