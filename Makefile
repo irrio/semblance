@@ -20,7 +20,7 @@ target/vec.o: src/vec.c src/vec.h target/
 target/:
 	mkdir -p target
 
-target/hello.wasm: target/
+target/hello.wasm: wasm/hello.c target/
 	./c2wasm.sh wasm/hello.c
 
 run: target/semblance target/hello.wasm

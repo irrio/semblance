@@ -40,7 +40,7 @@ can be used to write to standard output.
 extern void puts(char *str);
 
 void hello() {
-    puts("Hello, World!\n");
+    puts("Hello, World!");
 }
 ```
 

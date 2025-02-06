@@ -42,7 +42,7 @@ VEC(WasmValue) hostcall_puts(WasmStore *store, VEC(WasmValue) *args) {
     WasmMemInst *mem = store->mems.ptr;
     void *data = mem[0].data.ptr;
 
-    printf("%s", (char*)(data + offset));
+    printf("%s\n", (char*)(data + offset));
 
     return out;
 }
