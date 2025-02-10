@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <inttypes.h>
 
 const uint32_t WMEM_PAGE_SIZE = 65536;
 
@@ -102,10 +103,10 @@ void wrun_value_dump_num(WasmNumType numtype, WasmNumValue *wval) {
             printf("%f", wval->f64);
             break;
         case WasmNumI32:
-            printf("%d", wval->i32);
+            printf("%" PRId32, wval->i32);
             break;
         case WasmNumI64:
-            printf("%lld", wval->i64);
+            printf("%" PRId64, wval->i64);
             break;
     }
 }
