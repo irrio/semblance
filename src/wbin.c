@@ -69,7 +69,7 @@ void *wbin_decode_leb128_signed_64(u_leb128_prefixed data, int64_t *out) {
     } while ((byte & (1 << 7)) != 0);
 
     if ((shift < 64) && ((byte & 0x40) != 0)) {
-        result |= (~0 << shift);
+        result |= (UINT64_MAX << shift);
     }
 
     *out = result;
