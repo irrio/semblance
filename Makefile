@@ -24,7 +24,7 @@ target/:
 	mkdir -p target
 
 target/hello.wasm: wasm/hello.c target/
-	./c2wasm.sh wasm/hello.c
+	./scripts/c2wasm.sh wasm/hello.c
 
 run: target/semblance target/hello.wasm
 	./target/semblance target/hello.wasm --invoke hello
