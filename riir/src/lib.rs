@@ -1,3 +1,1 @@
-pub fn hello() -> &'static str {
-    "Hello, world!"
-}
+pub struct WasmModule {}
