@@ -1,5 +1,6 @@
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "cli.h"
@@ -30,6 +31,49 @@ void wbin_read_module_or_exit(CliArgs *args, WasmModule *wmod) {
         printf("\n");
         exit(2);
     }
+}
+
+int cli_invoke_argv_parse_num(WasmNumType type, char *arg, WasmNumValue *val) {
+    switch (type) {
+        case WasmNumI32: {
+            char *end;
+            long num = strtol(arg, &end, 10);
+            //if (arg != end) return 1;
+            if (num > INT_MAX) return 2;
+            val->i32 = num;
+            break;
+        }
+        case WasmNumI64: {
+            char *end;
+            long num = strtol(arg, &end, 10);
+            //if (arg != end) return 1;
+            val->i64 = num;
+            break;
+        }
+        case WasmNumF32:
+            return 1;
+        case WasmNumF64:
+            return 1;
+    }
+    return 0;
+}
+
+int cli_invoke_argv_parse(WasmResultType *type, char **argv, VEC(WasmValue) *out) {
+    for (size_t i = 0; i < type->len; i++) {
+        WasmValueType *vtype = vec_at(type, sizeof(WasmValueType), i);
+        switch (vtype->kind) {
+            case WasmValueTypeNum: {
+                WasmValue val;
+                int err = cli_invoke_argv_parse_num(vtype->value.num, argv[i], &val.num);
+                if (err) return err;
+                vec_push_back(out, sizeof(WasmValue), &val);
+                break;
+            }
+            default:
+                return 1;
+        }
+    }
+    return 0;
 }
 
 VEC(WasmValue) hostcall_puts(WasmStore *store, VEC(WasmValue) *args) {
@@ -97,8 +141,16 @@ int main(int argc, char *argv[]) {
 
     WasmExternVal export = wrun_resolve_export(winst, args.invoke);
     assert(export.kind == WasmExternValFunc);
+    WasmFuncInst *finst = vec_at(&store.funcs, sizeof(WasmFuncInst), export.val.func - 1);
+
     VEC(WasmValue) fn_args;
     vec_init(&fn_args);
+    int parse_err = cli_invoke_argv_parse(&finst->functype.input_type, args.invoke_argv, &fn_args);
+    if (parse_err) {
+        printf("failed to parse invoke args");
+        exit(3);
+    }
+
     DynamicWasmResult wres = wrun_invoke_func(export.val.func, &fn_args, &store);
     wrun_result_dump_dynamic(&wres);
 

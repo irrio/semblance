@@ -614,6 +614,17 @@ WasmResultKind wrun_exec_expr(WasmStore *store, WasmStack *stack, WasmInstructio
             case WasmOpF64Const:
                 wrun_stack_push_f64(stack, ip->params._const.value.f64);
                 break;
+            case WasmOpI32Add: {
+                WasmValue a;
+                WasmValue b;
+                wrun_stack_pop_val(stack, &b);
+                wrun_stack_pop_val(stack, &a);
+                WasmValue out = {
+                    .num.i32 = a.num.i32 + b.num.i32
+                };
+                wrun_stack_push_val(stack, &out);
+                break;
+            }
             case WasmOpI32Ge_s: {
                 WasmValue a;
                 WasmValue b;

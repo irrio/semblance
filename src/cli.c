@@ -13,6 +13,20 @@ void cli_init(CliArgs *args) {
     args->help = false;
     args->path = NULL;
     args->invoke = NULL;
+    args->invoke_argc = 0;
+    args->invoke_argv = NULL;
+}
+
+void cli_debug(CliArgs *args) {
+    printf("help: %d\n", args->help);
+    printf("path: %s\n", args->path);
+    printf("invoke: %s\n", args->invoke);
+    printf("invoke_args: [");
+    for (int i = 0; i < args->invoke_argc; i++) {
+        if (i) printf(", ");
+        printf("%s", args->invoke_argv[i]);
+    }
+    printf("]\n");
 }
 
 int cli_parse(CliArgs *args, int argc, char *argv[]) {
@@ -29,7 +43,17 @@ int cli_parse(CliArgs *args, int argc, char *argv[]) {
                 return CLI_ERR_INCOMPLETE_OPTION;
             }
             args->invoke = argv[i+1];
-            i++;
+            int j;
+            for (j = i + 2; j < argc; j++) {
+                if (strncmp(argv[j], "--", 2) == 0) break;
+            }
+            args->invoke_argc = j - (i + 2);
+            if (args->invoke_argc > 0) {
+                args->invoke_argv = &argv[i + 2];
+            }
+            i = j - 1;
+        } else if (strcmp(opt, "--") == 0) {
+            continue;
         } else if (strncmp(opt, "-", 1) == 0) {
             return CLI_ERR_UNKNOWN_FLAG;
         } else {
@@ -73,6 +97,6 @@ char *cli_usage_str() {
         "semblance <MODULE.wasm>\n"
         "\n"
         "Options:\n"
-        "\t-h, --help\t\tPrint this help text\n"
-        "\t-I, --invoke <NAME>\tInvoke the function exported as $NAME\n";
+        "\t-h, --help\t\t\tPrint this help text\n"
+        "\t-I, --invoke <NAME> [ARGS...]\tInvoke an exported function\n";
 }
