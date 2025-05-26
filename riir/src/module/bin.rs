@@ -17,6 +17,7 @@ pub enum WasmDecodeError {
     InvalidRefType(u8),
     InvalidLimits(u8),
     InvalidGlobalMutability(u8),
+    InvalidExportDesc(u8),
     UnexpectedEof,
 }
 
@@ -175,6 +176,26 @@ fn decode_type_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmTypeIdx>> {
     Ok((WasmTypeIdx(idx), bytes))
 }
 
+fn decode_func_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmFuncIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmFuncIdx(idx), bytes))
+}
+
+fn decode_table_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmTableIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmTableIdx(idx), bytes))
+}
+
+fn decode_mem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmMemIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmMemIdx(idx), bytes))
+}
+
+fn decode_global_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobalIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmGlobalIdx(idx), bytes))
+}
+
 fn decode_ref_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmRefType>> {
     let (tag, bytes) = take_byte(bytes)?;
     match tag {
@@ -323,7 +344,7 @@ fn decode_code_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecode
 
 fn decode_table_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
     let (len, mut bytes) = decode_leb128(bytes)?;
-    wmod.reserve_code(len as usize);
+    wmod.reserve_tables(len as usize);
     for _ in 0..len {
         let (table, rest) = decode_table_type(bytes)?;
         wmod.push_table(table);
@@ -334,7 +355,7 @@ fn decode_table_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecod
 
 fn decode_memory_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
     let (len, mut bytes) = decode_leb128(bytes)?;
-    wmod.reserve_code(len as usize);
+    wmod.reserve_mems(len as usize);
     for _ in 0..len {
         let (mem, rest) = decode_mem_type(bytes)?;
         wmod.push_mem(mem);
@@ -361,10 +382,50 @@ fn decode_global(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobal>> {
 
 fn decode_global_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
     let (len, mut bytes) = decode_leb128(bytes)?;
-    wmod.reserve_code(len as usize);
+    wmod.reserve_globals(len as usize);
     for _ in 0..len {
         let (global, rest) = decode_global(bytes)?;
         wmod.push_global(global);
+        bytes = rest;
+    }
+    Ok(())
+}
+
+fn decode_export_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExportDesc>> {
+    let (tag, bytes) = take_byte(bytes)?;
+    match tag {
+        0x00 => {
+            let (func_idx, bytes) = decode_func_idx(bytes)?;
+            Ok((WasmExportDesc::Func(func_idx), bytes))
+        }
+        0x01 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((WasmExportDesc::Table(table_idx), bytes))
+        }
+        0x02 => {
+            let (mem_idx, bytes) = decode_mem_idx(bytes)?;
+            Ok((WasmExportDesc::Mem(mem_idx), bytes))
+        }
+        0x03 => {
+            let (global_idx, bytes) = decode_global_idx(bytes)?;
+            Ok((WasmExportDesc::Global(global_idx), bytes))
+        }
+        _ => Err(WasmDecodeError::InvalidExportDesc(tag)),
+    }
+}
+
+fn decode_export(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExport>> {
+    let (name, bytes) = decode_name(bytes)?;
+    let (desc, bytes) = decode_export_desc(bytes)?;
+    Ok((WasmExport { name, desc }, bytes))
+}
+
+fn decode_export_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    wmod.reserve_exports(len as usize);
+    for _ in 0..len {
+        let (export, rest) = decode_export(bytes)?;
+        wmod.push_export(export);
         bytes = rest;
     }
     Ok(())
@@ -408,6 +469,10 @@ fn decode_section<'b>(
             //decode_global_section(section, wmod)?;
             Ok(((), rest))
         }
+        SectionId::Export => {
+            decode_export_section(section, wmod)?;
+            Ok(((), rest))
+        }
         SectionId::Code => {
             decode_code_section(section, wmod)?;
             Ok(((), rest))
@@ -415,8 +480,7 @@ fn decode_section<'b>(
         _ => {
             eprintln!("Skipping {:?}", sid);
             Ok(((), rest))
-        } //SectionId::Export => todo!(),
-          //SectionId::Start => todo!(),
+        } //SectionId::Start => todo!(),
           //SectionId::Element => todo!(),
           //SectionId::Data => todo!(),
           //SectionId::DataCount => todo!(),
