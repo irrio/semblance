@@ -18,8 +18,8 @@ pub struct WasmModuleBuilder {
 }
 
 pub struct WasmCode {
-    locals: Box<[WasmValueType]>,
-    body: WasmExpr,
+    pub locals: Box<[WasmValueType]>,
+    pub body: WasmExpr,
 }
 
 impl WasmModuleBuilder {

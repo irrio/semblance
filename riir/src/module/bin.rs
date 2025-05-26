@@ -1,7 +1,7 @@
 use std::string::FromUtf8Error;
 
 use super::{
-    builder::{WasmModuleBuilder, WasmResultTypeBuilder},
+    builder::{WasmCode, WasmModuleBuilder, WasmResultTypeBuilder},
     *,
 };
 
@@ -297,6 +297,30 @@ fn decode_func_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecode
     Ok(())
 }
 
+fn decode_code(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmCode>> {
+    let (byte_size, bytes) = decode_leb128(bytes)?;
+    let rest = &bytes[(byte_size as usize)..];
+    // TODO: Decode code
+    Ok((
+        WasmCode {
+            locals: vec![].into_boxed_slice(),
+            body: WasmExpr(vec![].into_boxed_slice()),
+        },
+        rest,
+    ))
+}
+
+fn decode_code_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    wmod.reserve_code(len as usize);
+    for _ in 0..len {
+        let (code, rest) = decode_code(bytes)?;
+        wmod.push_code(code);
+        bytes = rest;
+    }
+    Ok(())
+}
+
 fn decode_section<'b>(
     bytes: &'b [u8],
     wmod: &mut WasmModuleBuilder,
@@ -323,6 +347,10 @@ fn decode_section<'b>(
             decode_func_section(section, wmod)?;
             Ok(((), rest))
         }
+        SectionId::Code => {
+            decode_code_section(section, wmod)?;
+            Ok(((), rest))
+        }
         _ => {
             eprintln!("Skipping {:?}", sid);
             Ok(((), rest))
@@ -332,7 +360,6 @@ fn decode_section<'b>(
           //SectionId::Export => todo!(),
           //SectionId::Start => todo!(),
           //SectionId::Element => todo!(),
-          //SectionId::Code => todo!(),
           //SectionId::Data => todo!(),
           //SectionId::DataCount => todo!(),
     }
