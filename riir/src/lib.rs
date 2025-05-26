@@ -1,1 +1,1 @@
-pub struct WasmModule {}
+pub mod module;

@@ -1,4 +1,10 @@
-use std::path::PathBuf;
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+};
+
+use semblance::module::WasmModule;
 
 const HELP_TEXT: &'static str = "
 semblance <MODULE> [OPTIONS]
@@ -82,7 +88,7 @@ impl CliArgs {
 
         let argv = std::env::args().collect::<Vec<_>>();
         let strs = argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-        let mut rem = strs.as_slice();
+        let mut rem = &strs[1..];
 
         while rem.len() > 0 {
             let (flag, rest) = parse_flag(rem);
@@ -125,6 +131,8 @@ impl CliArgs {
 
 fn main() {
     let args = CliArgs::parse_or_exit();
-
     println!("{:?}", args);
+
+    let module = WasmModule::read(&args.module_path).expect("failed to read module");
+    println!("{:?}", module);
 }
