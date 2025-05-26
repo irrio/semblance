@@ -473,6 +473,11 @@ fn decode_section<'b>(
             decode_export_section(section, wmod)?;
             Ok(((), rest))
         }
+        SectionId::Start => {
+            let (func_idx, _) = decode_func_idx(section)?;
+            wmod.start(func_idx);
+            Ok(((), rest))
+        }
         SectionId::Code => {
             decode_code_section(section, wmod)?;
             Ok(((), rest))
@@ -480,8 +485,7 @@ fn decode_section<'b>(
         _ => {
             eprintln!("Skipping {:?}", sid);
             Ok(((), rest))
-        } //SectionId::Start => todo!(),
-          //SectionId::Element => todo!(),
+        } //SectionId::Element => todo!(),
           //SectionId::Data => todo!(),
           //SectionId::DataCount => todo!(),
     }
