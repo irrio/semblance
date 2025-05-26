@@ -343,6 +343,33 @@ fn decode_memory_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
+fn decode_expr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExpr>> {
+    todo!();
+}
+
+fn decode_global(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobal>> {
+    let (global_type, bytes) = decode_global_type(bytes)?;
+    let (expr, bytes) = decode_expr(bytes)?;
+    Ok((
+        WasmGlobal {
+            global_type,
+            init: expr,
+        },
+        bytes,
+    ))
+}
+
+fn decode_global_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    wmod.reserve_code(len as usize);
+    for _ in 0..len {
+        let (global, rest) = decode_global(bytes)?;
+        wmod.push_global(global);
+        bytes = rest;
+    }
+    Ok(())
+}
+
 fn decode_section<'b>(
     bytes: &'b [u8],
     wmod: &mut WasmModuleBuilder,
@@ -377,6 +404,10 @@ fn decode_section<'b>(
             decode_memory_section(section, wmod)?;
             Ok(((), rest))
         }
+        SectionId::Global => {
+            //decode_global_section(section, wmod)?;
+            Ok(((), rest))
+        }
         SectionId::Code => {
             decode_code_section(section, wmod)?;
             Ok(((), rest))
@@ -384,8 +415,7 @@ fn decode_section<'b>(
         _ => {
             eprintln!("Skipping {:?}", sid);
             Ok(((), rest))
-        } //SectionId::Global => todo!(),
-          //SectionId::Export => todo!(),
+        } //SectionId::Export => todo!(),
           //SectionId::Start => todo!(),
           //SectionId::Element => todo!(),
           //SectionId::Data => todo!(),
