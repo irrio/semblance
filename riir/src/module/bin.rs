@@ -431,6 +431,21 @@ fn decode_export_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
+fn decode_elem(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmElem>> {
+    todo!()
+}
+
+fn decode_element_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    wmod.reserve_elems(len as usize);
+    for _ in 0..len {
+        let (elem, rest) = decode_elem(bytes)?;
+        wmod.push_elem(elem);
+        bytes = rest;
+    }
+    Ok(())
+}
+
 fn decode_section<'b>(
     bytes: &'b [u8],
     wmod: &mut WasmModuleBuilder,
@@ -478,6 +493,10 @@ fn decode_section<'b>(
             wmod.start(func_idx);
             Ok(((), rest))
         }
+        SectionId::Element => {
+            //decode_element_section(section, wmod)?;
+            Ok(((), rest))
+        }
         SectionId::Code => {
             decode_code_section(section, wmod)?;
             Ok(((), rest))
@@ -485,8 +504,7 @@ fn decode_section<'b>(
         _ => {
             eprintln!("Skipping {:?}", sid);
             Ok(((), rest))
-        } //SectionId::Element => todo!(),
-          //SectionId::Data => todo!(),
+        } //SectionId::Data => todo!(),
           //SectionId::DataCount => todo!(),
     }
 }
