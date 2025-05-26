@@ -4,7 +4,8 @@ use super::*;
 pub struct WasmModuleBuilder {
     version: u32,
     types: Vec<WasmFuncType>,
-    funcs: Vec<WasmFunc>,
+    funcs: Vec<WasmTypeIdx>,
+    code: Vec<WasmCode>,
     tables: Vec<WasmTableType>,
     mems: Vec<WasmMemType>,
     globals: Vec<WasmGlobal>,
@@ -14,6 +15,11 @@ pub struct WasmModuleBuilder {
     imports: Vec<WasmImport>,
     exports: Vec<WasmExport>,
     customs: Vec<WasmCustom>,
+}
+
+pub struct WasmCode {
+    locals: Box<[WasmValueType]>,
+    body: WasmExpr,
 }
 
 impl WasmModuleBuilder {
@@ -37,8 +43,16 @@ impl WasmModuleBuilder {
         self.funcs.reserve_exact(num);
     }
 
-    pub fn push_func(&mut self, func: WasmFunc) {
-        self.funcs.push(func);
+    pub fn push_func(&mut self, type_idx: WasmTypeIdx) {
+        self.funcs.push(type_idx);
+    }
+
+    pub fn reserve_code(&mut self, num: usize) {
+        self.code.reserve_exact(num);
+    }
+
+    pub fn push_code(&mut self, code: WasmCode) {
+        self.code.push(code);
     }
 
     pub fn reserve_tables(&mut self, num: usize) {
@@ -110,10 +124,20 @@ impl WasmModuleBuilder {
     }
 
     pub fn build(self) -> WasmModule {
+        let funcs = self
+            .funcs
+            .into_iter()
+            .zip(self.code.into_iter())
+            .map(|(type_idx, code)| WasmFunc {
+                type_idx,
+                locals: code.locals,
+                body: code.body,
+            })
+            .collect::<Vec<_>>();
         WasmModule {
             version: self.version,
             types: self.types.into_boxed_slice(),
-            funcs: self.funcs.into_boxed_slice(),
+            funcs: funcs.into_boxed_slice(),
             tables: self.tables.into_boxed_slice(),
             mems: self.mems.into_boxed_slice(),
             globals: self.globals.into_boxed_slice(),
