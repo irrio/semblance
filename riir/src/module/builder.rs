@@ -3,6 +3,7 @@ use super::*;
 #[derive(Default)]
 pub struct WasmModuleBuilder {
     version: u32,
+    datacount: Option<u32>,
     types: Vec<WasmFuncType>,
     funcs: Vec<WasmTypeIdx>,
     code: Vec<WasmCode>,
@@ -29,6 +30,10 @@ impl WasmModuleBuilder {
 
     pub fn version(&mut self, version: u32) {
         self.version = version;
+    }
+
+    pub fn datacount(&mut self, count: u32) {
+        self.datacount = Some(count);
     }
 
     pub fn reserve_types(&mut self, num: usize) {

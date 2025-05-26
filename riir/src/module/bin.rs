@@ -516,14 +516,15 @@ fn decode_section<'b>(
             //decode_data_section(section, wmod)?;
             Ok(((), rest))
         }
+        SectionId::DataCount => {
+            let (datacount, _) = decode_leb128(section)?;
+            wmod.datacount(datacount);
+            Ok(((), rest))
+        }
         SectionId::Code => {
             decode_code_section(section, wmod)?;
             Ok(((), rest))
         }
-        _ => {
-            eprintln!("Skipping {:?}", sid);
-            Ok(((), rest))
-        } //SectionId::DataCount => todo!(),
     }
 }
 
