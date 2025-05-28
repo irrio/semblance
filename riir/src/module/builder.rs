@@ -188,3 +188,26 @@ impl Into<WasmResultType> for WasmResultTypeBuilder {
         self.build()
     }
 }
+
+#[derive(Default)]
+pub struct WasmExprBuilder(Vec<WasmInstruction>);
+
+impl WasmExprBuilder {
+    pub fn new() -> Self {
+        WasmExprBuilder::default()
+    }
+
+    pub fn push_instr(&mut self, instr: WasmInstruction) {
+        self.0.push(instr);
+    }
+
+    pub fn build(self) -> WasmExpr {
+        WasmExpr(self.0.into_boxed_slice())
+    }
+}
+
+impl Into<WasmExpr> for WasmExprBuilder {
+    fn into(self) -> WasmExpr {
+        self.build()
+    }
+}

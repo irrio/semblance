@@ -28,6 +28,10 @@ pub struct WasmGlobalIdx(pub u32);
 pub struct WasmElemIdx(pub u32);
 #[derive(Debug)]
 pub struct WasmDataIdx(pub u32);
+#[derive(Debug)]
+pub struct WasmLabelIdx(pub u32);
+#[derive(Debug)]
+pub struct WasmLocalIdx(pub u32);
 
 #[derive(Debug)]
 pub enum WasmNumType {
@@ -65,8 +69,344 @@ pub struct WasmFuncType {
 }
 
 #[derive(Debug)]
-pub struct WasmInstruction {
-    // ...
+pub enum WasmBlockType {
+    TypeRef(WasmTypeIdx),
+    InlineType(WasmValueType),
+}
+
+#[derive(Debug)]
+pub struct WasmMemArg {
+    pub offset: u32,
+    pub align: u32,
+}
+
+#[derive(Debug)]
+pub enum WasmInstruction {
+    Unreachable,
+    Nop,
+    Block {
+        block_type: WasmBlockType,
+        expr: WasmExpr,
+    },
+    Loop {
+        block_type: WasmBlockType,
+        expr: WasmExpr,
+    },
+    If {
+        block_type: WasmBlockType,
+        then: WasmExpr,
+        else_: WasmExpr,
+    },
+    Break {
+        label: WasmLabelIdx,
+    },
+    BreakIf {
+        label: WasmLabelIdx,
+    },
+    BreakTable {
+        labels: Box<[WasmLabelIdx]>,
+        default_label: WasmLabelIdx,
+    },
+    Return,
+    Call {
+        func_idx: WasmFuncIdx,
+    },
+    CallIndirect {
+        table_idx: WasmTableIdx,
+        type_idx: WasmTypeIdx,
+    },
+    ExprEnd,
+    RefNull {
+        ref_type: WasmRefType,
+    },
+    RefIsNull,
+    RefFunc {
+        func_idx: WasmFuncIdx,
+    },
+    Drop,
+    Select {
+        value_types: Box<[WasmValueType]>,
+    },
+    LocalGet {
+        local_idx: WasmLocalIdx,
+    },
+    LocalSet {
+        local_idx: WasmLocalIdx,
+    },
+    LocalTee {
+        local_idx: WasmLocalIdx,
+    },
+    GlobalGet {
+        global_idx: WasmGlobalIdx,
+    },
+    GlobalSet {
+        global_idx: WasmGlobalIdx,
+    },
+    TableGet {
+        table_idx: WasmTableIdx,
+    },
+    TableSet {
+        table_idx: WasmTableIdx,
+    },
+    TableSize {
+        table_idx: WasmTableIdx,
+    },
+    TableGrow {
+        table_idx: WasmTableIdx,
+    },
+    TableFill {
+        table_idx: WasmTableIdx,
+    },
+    TableCopy {
+        dst: WasmTableIdx,
+        src: WasmTableIdx,
+    },
+    TableInit {
+        table_idx: WasmTableIdx,
+        elem_idx: WasmElemIdx,
+    },
+    ElemDrop {
+        elem_idx: WasmElemIdx,
+    },
+    I32Load {
+        memarg: WasmMemArg,
+    },
+    I64Load {
+        memarg: WasmMemArg,
+    },
+    F32Load {
+        memarg: WasmMemArg,
+    },
+    F64Load {
+        memarg: WasmMemArg,
+    },
+    I32Load8S {
+        memarg: WasmMemArg,
+    },
+    I32Load8U {
+        memarg: WasmMemArg,
+    },
+    I32Load16S {
+        memarg: WasmMemArg,
+    },
+    I32Load16U {
+        memarg: WasmMemArg,
+    },
+    I64Load8S {
+        memarg: WasmMemArg,
+    },
+    I64Load8U {
+        memarg: WasmMemArg,
+    },
+    I64Load16S {
+        memarg: WasmMemArg,
+    },
+    I64Load16U {
+        memarg: WasmMemArg,
+    },
+    I64Load32S {
+        memarg: WasmMemArg,
+    },
+    I64Load32U {
+        memarg: WasmMemArg,
+    },
+    I32Store {
+        memarg: WasmMemArg,
+    },
+    I64Store {
+        memarg: WasmMemArg,
+    },
+    F32Store {
+        memarg: WasmMemArg,
+    },
+    F64Store {
+        memarg: WasmMemArg,
+    },
+    I32Store8 {
+        memarg: WasmMemArg,
+    },
+    I32Store16 {
+        memarg: WasmMemArg,
+    },
+    I64Store8 {
+        memarg: WasmMemArg,
+    },
+    I64Store16 {
+        memarg: WasmMemArg,
+    },
+    I64Store32 {
+        memarg: WasmMemArg,
+    },
+    MemorySize,
+    MemoryGrow,
+    MemoryInit {
+        data_idx: WasmDataIdx,
+    },
+    DataDrop {
+        data_idx: WasmDataIdx,
+    },
+    MemoryCopy,
+    MemoryFill,
+
+    I32Const {
+        val: i32,
+    },
+    I64Const {
+        val: i64,
+    },
+    F32Const {
+        val: f32,
+    },
+    F64Const {
+        val: f64,
+    },
+
+    I32EqZ,
+    I32Eq,
+    I32Neq,
+    I32LtS,
+    I32LtU,
+    I32GtS,
+    I32GtU,
+    I32LeS,
+    I32LeU,
+    I32GeS,
+    I32GeU,
+
+    I64EqZ,
+    I64Eq,
+    I64Neq,
+    I64LtS,
+    I64LtU,
+    I64GtS,
+    I64GtU,
+    I64LeS,
+    I64LeU,
+    I64GeS,
+    I64GeU,
+
+    F32Eq,
+    F32Neq,
+    F32Lt,
+    F32Gt,
+    F32Le,
+    F32Ge,
+
+    F64Eq,
+    F64Neq,
+    F64Lt,
+    F64Gt,
+    F64Le,
+    F64Ge,
+
+    I32Clz,
+    I32Ctz,
+    I32Popcnt,
+    I32Add,
+    I32Sub,
+    I32Mul,
+    I32DivS,
+    I32DivU,
+    I32RemS,
+    I32RemU,
+    I32And,
+    I32Or,
+    I32Xor,
+    I32Shl,
+    I32ShrS,
+    I32ShrU,
+    I32Rotl,
+    I32Rotr,
+
+    I64Clz,
+    I64Ctz,
+    I64Popcnt,
+    I64Add,
+    I64Sub,
+    I64Mul,
+    I64DivS,
+    I64DivU,
+    I64RemS,
+    I64RemU,
+    I64And,
+    I64Or,
+    I64Xor,
+    I64Shl,
+    I64ShrS,
+    I64ShrU,
+    I64Rotl,
+    I64Rotr,
+
+    F32Abs,
+    F32Neg,
+    F32Ceil,
+    F32Floor,
+    F32Trunc,
+    F32Nearest,
+    F32Sqrt,
+    F32Add,
+    F32Sub,
+    F32Mul,
+    F32Div,
+    F32Min,
+    F32Max,
+    F32CopySign,
+
+    F64Abs,
+    F64Neg,
+    F64Ceil,
+    F64Floor,
+    F64Trunc,
+    F64Nearest,
+    F64Sqrt,
+    F64Add,
+    F64Sub,
+    F64Mul,
+    F64Div,
+    F64Min,
+    F64Max,
+    F64CopySign,
+
+    I32WrapI64,
+    I32TruncF32S,
+    I32TruncF32U,
+    I32TruncF64S,
+    I32TruncF64U,
+    I64ExtendI32S,
+    I64ExtendI32U,
+    I64TruncF32S,
+    I64TruncF32U,
+    I64TruncF64S,
+    I64TruncF64U,
+    F32ConvertI32S,
+    F32ConvertI32U,
+    F32ConvertI64S,
+    F32ConvertI64U,
+    F32DemoteF64,
+    F64ConvertI32S,
+    F64ConvertI32U,
+    F64ConvertI64S,
+    F64ConvertI64U,
+    F64PromoteF32,
+    I32ReinterpretF32,
+    I64ReinterpretF64,
+    F32ReinterpretI32,
+    F64ReinterpretI64,
+
+    I32Extend8S,
+    I32Extend16S,
+    I64Extend8S,
+    I64Extend16S,
+    I64Extend32S,
+
+    I32TruncSatF32S,
+    I32TruncSatF32U,
+    I32TruncSatF64S,
+    I32TruncSatF64U,
+    I64TruncSatF32S,
+    I64TruncSatF32U,
+    I64TruncSatF64S,
+    I64TruncSatF64U,
 }
 
 #[derive(Debug)]
