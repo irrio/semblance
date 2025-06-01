@@ -387,17 +387,25 @@ fn decode_func_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecode
     Ok(())
 }
 
+fn decode_locals(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmValueType]>>> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    let mut locals = Vec::new();
+    for _ in 0..len {
+        let (n, rest) = decode_leb128(bytes)?;
+        let (t, rest) = decode_value_type(rest)?;
+        bytes = rest;
+        for _ in 0..n {
+            locals.push(t);
+        }
+    }
+    Ok((locals.into_boxed_slice(), bytes))
+}
+
 fn decode_code(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmCode>> {
-    let (byte_size, bytes) = decode_leb128(bytes)?;
-    let rest = &bytes[(byte_size as usize)..];
-    // TODO: Decode code
-    Ok((
-        WasmCode {
-            locals: vec![].into_boxed_slice(),
-            body: WasmExpr(vec![].into_boxed_slice()),
-        },
-        rest,
-    ))
+    let (_byte_size, bytes) = decode_leb128(bytes)?;
+    let (locals, bytes) = decode_locals(bytes)?;
+    let (body, bytes) = decode_expr(bytes)?;
+    Ok((WasmCode { locals, body }, bytes))
 }
 
 fn decode_code_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {

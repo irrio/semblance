@@ -33,7 +33,7 @@ pub struct WasmLabelIdx(pub u32);
 #[derive(Debug)]
 pub struct WasmLocalIdx(pub u32);
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum WasmNumType {
     I32,
     I64,
@@ -41,18 +41,18 @@ pub enum WasmNumType {
     F64,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum WasmVecType {
     V128,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum WasmRefType {
     FuncRef,
     ExternRef,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum WasmValueType {
     Num(WasmNumType),
     Vec(WasmVecType),
