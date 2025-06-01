@@ -120,10 +120,6 @@ impl WasmModuleBuilder {
         self.exports.push(export);
     }
 
-    pub fn reserve_custom(&mut self, num: usize) {
-        self.customs.reserve_exact(num);
-    }
-
     pub fn push_custom(&mut self, custom: WasmCustom) {
         self.customs.push(custom);
     }

@@ -21,6 +21,7 @@ pub enum WasmDecodeError {
     InvalidBlockType,
     InvalidConst,
     InvalidData,
+    InvalidElem,
     UnknownOpcode(u8),
     UnknownExtendedOpcode(u32),
     UnsupportedMemIdx(u32),
@@ -1000,8 +1001,153 @@ fn decode_export_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
+fn decode_elem_init_func_refs(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmExpr]>>> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    let mut exprs = Vec::with_capacity(len as usize);
+    for _ in 0..len {
+        let (func_idx, rest) = decode_func_idx(bytes)?;
+        bytes = rest;
+        let mut expr = WasmExprBuilder::new();
+        expr.push_instr(WasmInstruction::RefFunc { func_idx });
+        expr.push_instr(WasmInstruction::ExprEnd);
+        exprs.push(expr.build());
+    }
+    Ok((exprs.into_boxed_slice(), bytes))
+}
+
+fn decode_elem_init_exprs(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmExpr]>>> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    let mut exprs = Vec::with_capacity(len as usize);
+    for _ in 0..len {
+        let (expr, rest) = decode_expr(bytes)?;
+        bytes = rest;
+        exprs.push(expr);
+    }
+    Ok((exprs.into_boxed_slice(), bytes))
+}
+
+fn decode_elem_kind(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmRefType>> {
+    let (_, bytes) = take_byte_exact::<0x00>(bytes)?;
+    Ok((WasmRefType::FuncRef, bytes))
+}
+
 fn decode_elem(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmElem>> {
-    todo!()
+    let (tag, bytes) = decode_leb128(bytes)?;
+    match tag {
+        0 => {
+            let (offset_expr, bytes) = decode_expr(bytes)?;
+            let (init, bytes) = decode_elem_init_func_refs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type: WasmRefType::FuncRef,
+                    init,
+                    elem_mode: WasmElemMode::Active {
+                        table_idx: WasmTableIdx(0),
+                        offset_expr,
+                    },
+                },
+                bytes,
+            ))
+        }
+        1 => {
+            let (ref_type, bytes) = decode_elem_kind(bytes)?;
+            let (init, bytes) = decode_elem_init_func_refs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type,
+                    init,
+                    elem_mode: WasmElemMode::Passive,
+                },
+                bytes,
+            ))
+        }
+        2 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            let (offset_expr, bytes) = decode_expr(bytes)?;
+            let (ref_type, bytes) = decode_elem_kind(bytes)?;
+            let (init, bytes) = decode_elem_init_func_refs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type,
+                    init,
+                    elem_mode: WasmElemMode::Active {
+                        table_idx,
+                        offset_expr,
+                    },
+                },
+                bytes,
+            ))
+        }
+        3 => {
+            let (ref_type, bytes) = decode_elem_kind(bytes)?;
+            let (init, bytes) = decode_elem_init_func_refs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type,
+                    init,
+                    elem_mode: WasmElemMode::Passive,
+                },
+                bytes,
+            ))
+        }
+        4 => {
+            let (offset_expr, bytes) = decode_expr(bytes)?;
+            let (init, bytes) = decode_elem_init_exprs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type: WasmRefType::FuncRef,
+                    init,
+                    elem_mode: WasmElemMode::Active {
+                        table_idx: WasmTableIdx(0),
+                        offset_expr,
+                    },
+                },
+                bytes,
+            ))
+        }
+        5 => {
+            let (ref_type, bytes) = decode_ref_type(bytes)?;
+            let (init, bytes) = decode_elem_init_exprs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type,
+                    init,
+                    elem_mode: WasmElemMode::Passive,
+                },
+                bytes,
+            ))
+        }
+        6 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            let (offset_expr, bytes) = decode_expr(bytes)?;
+            let (ref_type, bytes) = decode_ref_type(bytes)?;
+            let (init, bytes) = decode_elem_init_exprs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type,
+                    init,
+                    elem_mode: WasmElemMode::Active {
+                        table_idx,
+                        offset_expr,
+                    },
+                },
+                bytes,
+            ))
+        }
+        7 => {
+            let (ref_type, bytes) = decode_ref_type(bytes)?;
+            let (init, bytes) = decode_elem_init_exprs(bytes)?;
+            Ok((
+                WasmElem {
+                    ref_type,
+                    init,
+                    elem_mode: WasmElemMode::Declarative,
+                },
+                bytes,
+            ))
+        }
+        _ => Err(WasmDecodeError::InvalidElem),
+    }
 }
 
 fn decode_element_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
@@ -1128,7 +1274,7 @@ fn decode_section<'b>(
             Ok(((), rest))
         }
         SectionId::Element => {
-            //decode_element_section(section, wmod)?;
+            decode_element_section(section, wmod)?;
             Ok(((), rest))
         }
         SectionId::Data => {

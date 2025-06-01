@@ -456,15 +456,12 @@ pub struct WasmGlobal {
 }
 
 #[derive(Debug)]
-pub struct WasmActiveElemParams {
-    pub table_idx: WasmTableIdx,
-    pub offset_expr: WasmExpr,
-}
-
-#[derive(Debug)]
 pub enum WasmElemMode {
     Passive,
-    Active(WasmActiveElemParams),
+    Active {
+        table_idx: WasmTableIdx,
+        offset_expr: WasmExpr,
+    },
     Declarative,
 }
 
