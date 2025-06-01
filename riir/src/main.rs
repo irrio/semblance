@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::Read,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use semblance::module::WasmModule;
 
@@ -135,4 +131,12 @@ fn main() {
 
     let module = WasmModule::read(&args.module_path).expect("failed to read module");
     println!("{:?}", module);
+
+    if let Some(InvokeArgs { fn_name, argv }) = args.invoke {
+        eprintln!(
+            "Invoking {} with args: {:?} not implemented yet!",
+            fn_name, argv
+        );
+        std::process::exit(2);
+    }
 }
