@@ -476,15 +476,12 @@ pub struct WasmElem {
 }
 
 #[derive(Debug)]
-pub struct WasmActiveDataParams {
-    pub mem_idx: WasmMemIdx,
-    pub offset_expr: WasmExpr,
-}
-
-#[derive(Debug)]
 pub enum WasmDataMode {
     Passive,
-    Active(WasmActiveDataParams),
+    Active {
+        mem_idx: WasmMemIdx,
+        offset_expr: WasmExpr,
+    },
 }
 
 #[derive(Debug)]

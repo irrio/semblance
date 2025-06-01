@@ -20,6 +20,7 @@ pub enum WasmDecodeError {
     InvalidExportDesc(u8),
     InvalidBlockType,
     InvalidConst,
+    InvalidData,
     UnknownOpcode(u8),
     UnknownExtendedOpcode(u32),
     UnsupportedMemIdx(u32),
@@ -1005,8 +1006,58 @@ fn decode_element_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDec
     Ok(())
 }
 
+fn decode_data_bytes(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[u8]>>> {
+    let (len, bytes) = decode_leb128(bytes)?;
+    let (data_bytes, bytes) = take_bytes_dyn(bytes, len as usize)?;
+    Ok((data_bytes.into_boxed_slice(), bytes))
+}
+
 fn decode_data(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmData>> {
-    todo!()
+    let (tag, bytes) = decode_leb128(bytes)?;
+    match tag {
+        0 => {
+            let (offset_expr, bytes) = decode_expr(bytes)?;
+            let (data_bytes, bytes) = decode_data_bytes(bytes)?;
+            let mode = WasmDataMode::Active {
+                mem_idx: WasmMemIdx(0),
+                offset_expr,
+            };
+            Ok((
+                WasmData {
+                    mode,
+                    bytes: data_bytes,
+                },
+                bytes,
+            ))
+        }
+        1 => {
+            let (data_bytes, bytes) = decode_data_bytes(bytes)?;
+            Ok((
+                WasmData {
+                    mode: WasmDataMode::Passive,
+                    bytes: data_bytes,
+                },
+                bytes,
+            ))
+        }
+        2 => {
+            let (mem_idx, bytes) = decode_mem_idx(bytes)?;
+            let (offset_expr, bytes) = decode_expr(bytes)?;
+            let (data_bytes, bytes) = decode_data_bytes(bytes)?;
+            let mode = WasmDataMode::Active {
+                mem_idx,
+                offset_expr,
+            };
+            Ok((
+                WasmData {
+                    mode,
+                    bytes: data_bytes,
+                },
+                bytes,
+            ))
+        }
+        _ => Err(WasmDecodeError::InvalidData),
+    }
 }
 
 fn decode_data_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecodeResult<()> {
@@ -1055,7 +1106,7 @@ fn decode_section<'b>(
             Ok(((), rest))
         }
         SectionId::Global => {
-            //decode_global_section(section, wmod)?;
+            decode_global_section(section, wmod)?;
             Ok(((), rest))
         }
         SectionId::Export => {
@@ -1072,7 +1123,7 @@ fn decode_section<'b>(
             Ok(((), rest))
         }
         SectionId::Data => {
-            //decode_data_section(section, wmod)?;
+            decode_data_section(section, wmod)?;
             Ok(((), rest))
         }
         SectionId::DataCount => {
