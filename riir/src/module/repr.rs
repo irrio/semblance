@@ -71,7 +71,7 @@ pub struct WasmFuncType {
 #[derive(Debug)]
 pub enum WasmBlockType {
     TypeRef(WasmTypeIdx),
-    InlineType(WasmValueType),
+    InlineType(Option<WasmValueType>),
 }
 
 #[derive(Debug)]
@@ -95,13 +95,14 @@ pub enum WasmInstruction {
     If {
         block_type: WasmBlockType,
         then: WasmExpr,
-        else_: WasmExpr,
+        else_: Option<WasmExpr>,
     },
+    Else,
     Break {
-        label: WasmLabelIdx,
+        label_idx: WasmLabelIdx,
     },
     BreakIf {
-        label: WasmLabelIdx,
+        label_idx: WasmLabelIdx,
     },
     BreakTable {
         labels: Box<[WasmLabelIdx]>,

@@ -197,8 +197,9 @@ impl WasmExprBuilder {
         WasmExprBuilder::default()
     }
 
-    pub fn push_instr(&mut self, instr: WasmInstruction) {
+    pub fn push_instr(&mut self, instr: WasmInstruction) -> &WasmInstruction {
         self.0.push(instr);
+        self.0.last().unwrap()
     }
 
     pub fn build(self) -> WasmExpr {

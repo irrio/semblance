@@ -18,8 +18,12 @@ pub enum WasmDecodeError {
     InvalidLimits(u8),
     InvalidGlobalMutability(u8),
     InvalidExportDesc(u8),
+    InvalidBlockType,
+    InvalidConst,
     UnknownOpcode(u8),
     UnknownExtendedOpcode(u32),
+    UnsupportedMemIdx(u32),
+    UnexpectedByte { expected: u8, actual: u8 },
     UnexpectedEof,
 }
 
@@ -39,6 +43,18 @@ fn take_bytes<const N: usize>(bytes: &[u8]) -> WasmDecodeResult<Decoded<[u8; N]>
 fn take_byte(bytes: &[u8]) -> WasmDecodeResult<Decoded<u8>> {
     let (buf, bytes) = take_bytes::<1>(bytes)?;
     Ok((buf[0], bytes))
+}
+
+fn take_byte_exact<const B: u8>(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
+    let (byte, bytes) = take_byte(bytes)?;
+    if byte == B {
+        Ok(((), bytes))
+    } else {
+        Err(WasmDecodeError::UnexpectedByte {
+            expected: B,
+            actual: byte,
+        })
+    }
 }
 
 fn take_bytes_dyn(bytes: &[u8], n: usize) -> WasmDecodeResult<Decoded<Vec<u8>>> {
@@ -62,6 +78,27 @@ fn decode_leb128(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<u32>> {
         }
         shift += 7;
     }
+    Ok((result, bytes))
+}
+
+fn decode_leb128_signed(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<i64>> {
+    let mut result = 0;
+    let mut shift = 0;
+
+    let byte = loop {
+        let (byte, rest) = take_byte(bytes)?;
+        bytes = rest;
+        result |= ((byte & !(1 << 7)) as i64) << shift;
+        shift += 7;
+        if (byte & (1 << 7)) == 0 {
+            break byte;
+        }
+    };
+
+    if (shift < 64) && ((byte & 0x40) != 0) {
+        result |= (u64::MAX as i64) << shift;
+    }
+
     Ok((result, bytes))
 }
 
@@ -188,14 +225,43 @@ fn decode_table_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmTableIdx>> {
     Ok((WasmTableIdx(idx), bytes))
 }
 
+fn decode_elem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmElemIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmElemIdx(idx), bytes))
+}
+
 fn decode_mem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmMemIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmMemIdx(idx), bytes))
 }
 
+fn decode_mem_idx_zero(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
+    let (mem_idx, bytes) = decode_mem_idx(bytes)?;
+    if mem_idx.0 == 0 {
+        Ok(((), bytes))
+    } else {
+        Err(WasmDecodeError::UnsupportedMemIdx(mem_idx.0))
+    }
+}
+
+fn decode_data_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmDataIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmDataIdx(idx), bytes))
+}
+
 fn decode_global_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobalIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmGlobalIdx(idx), bytes))
+}
+
+fn decode_label_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmLabelIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmLabelIdx(idx), bytes))
+}
+
+fn decode_local_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmLocalIdx>> {
+    let (idx, bytes) = decode_leb128(bytes)?;
+    Ok((WasmLocalIdx(idx), bytes))
 }
 
 fn decode_ref_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmRefType>> {
@@ -366,6 +432,38 @@ fn decode_memory_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
+fn decode_block_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmBlockType>> {
+    if let Ok((_, bytes)) = take_byte_exact::<0x40>(bytes) {
+        Ok((WasmBlockType::InlineType(None), bytes))
+    } else if let Ok((val_type, bytes)) = decode_value_type(bytes) {
+        Ok((WasmBlockType::InlineType(Some(val_type)), bytes))
+    } else {
+        let (s33, bytes) = decode_leb128_signed(bytes)?;
+        if s33 > 0 && s33 < (u32::MAX as i64) {
+            Ok((WasmBlockType::TypeRef(WasmTypeIdx(s33 as u32)), bytes))
+        } else {
+            Err(WasmDecodeError::InvalidBlockType)
+        }
+    }
+}
+
+fn decode_memarg(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmMemArg>> {
+    let (align, bytes) = decode_leb128(bytes)?;
+    let (offset, bytes) = decode_leb128(bytes)?;
+    Ok((WasmMemArg { align, offset }, bytes))
+}
+
+fn decode_label_indices(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmLabelIdx]>>> {
+    let (len, mut bytes) = decode_leb128(bytes)?;
+    let mut indices = Vec::with_capacity(len as usize);
+    for _ in 0..len {
+        let (label_idx, rest) = decode_label_idx(bytes)?;
+        bytes = rest;
+        indices.push(label_idx);
+    }
+    Ok((indices.into_boxed_slice(), bytes))
+}
+
 fn decode_extended_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstruction>> {
     let (opcode, bytes) = decode_leb128(bytes)?;
     use WasmInstruction::*;
@@ -378,16 +476,56 @@ fn decode_extended_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstructi
         5 => Ok((I64TruncSatF32U, bytes)),
         6 => Ok((I64TruncSatF64S, bytes)),
         7 => Ok((I64TruncSatF64U, bytes)),
-        8 => todo!("memory.init"),
-        9 => todo!("data.drop"),
-        10 => todo!("memory.copy"),
-        11 => todo!("memory.fill"),
-        12 => todo!("table.init"),
-        13 => todo!("elem.drop"),
-        14 => todo!("table.copy"),
-        15 => todo!("table.grow"),
-        16 => todo!("table.size"),
-        17 => todo!("table.fill"),
+        8 => {
+            let (data_idx, bytes) = decode_data_idx(bytes)?;
+            let (_, bytes) = decode_mem_idx_zero(bytes)?;
+            Ok((MemoryInit { data_idx }, bytes))
+        }
+        9 => {
+            let (data_idx, bytes) = decode_data_idx(bytes)?;
+            Ok((DataDrop { data_idx }, bytes))
+        }
+        10 => {
+            let (_, bytes) = decode_mem_idx_zero(bytes)?;
+            let (_, bytes) = decode_mem_idx_zero(bytes)?;
+            Ok((MemoryCopy, bytes))
+        }
+        11 => {
+            let (_, bytes) = decode_mem_idx_zero(bytes)?;
+            Ok((MemoryFill, bytes))
+        }
+        12 => {
+            let (elem_idx, bytes) = decode_elem_idx(bytes)?;
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((
+                TableInit {
+                    elem_idx,
+                    table_idx,
+                },
+                bytes,
+            ))
+        }
+        13 => {
+            let (elem_idx, bytes) = decode_elem_idx(bytes)?;
+            Ok((ElemDrop { elem_idx }, bytes))
+        }
+        14 => {
+            let (dst, bytes) = decode_table_idx(bytes)?;
+            let (src, bytes) = decode_table_idx(bytes)?;
+            Ok((TableCopy { dst, src }, bytes))
+        }
+        15 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((TableGrow { table_idx }, bytes))
+        }
+        16 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((TableSize { table_idx }, bytes))
+        }
+        17 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((TableFill { table_idx }, bytes))
+        }
         _ => Err(WasmDecodeError::UnknownExtendedOpcode(opcode)),
     }
 }
@@ -398,57 +536,233 @@ fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstruction>> {
     match opcode {
         0x00 => Ok((Unreachable, bytes)),
         0x01 => Ok((Nop, bytes)),
-        0x02 => todo!("block"),
-        0x03 => todo!("loop"),
-        0x04 => todo!("if"),
-        0x0C => todo!("br l"),
-        0x0D => todo!("br_if l"),
-        0x0E => todo!("br_table l* lN"),
-        0x0F => todo!("return"),
-        0x10 => todo!("call f"),
-        0x11 => todo!("call_indirect x y"),
-        0xD0 => todo!("ref.null t"),
-        0xD1 => todo!("ref.is_null"),
-        0xD2 => todo!("ref.func x"),
-        0x1A => todo!("drop"),
-        0x1B => todo!("select"),
-        0x1C => todo!("select t*"),
-        0x20 => todo!("local.get x"),
-        0x21 => todo!("local.set x"),
-        0x22 => todo!("local.tee x"),
-        0x23 => todo!("global.get x"),
-        0x24 => todo!("global.set x"),
-        0x25 => todo!("table.get x"),
-        0x26 => todo!("table.set x"),
-        0x28 => todo!("i32.load"),
-        0x29 => todo!("i64.load"),
-        0x2A => todo!("f32.load"),
-        0x2B => todo!("f64.load"),
-        0x2C => todo!("i32.load8_s"),
-        0x2D => todo!("i32.load8_u"),
-        0x2E => todo!("i32.load16_s"),
-        0x2F => todo!("i32.load16_u"),
-        0x30 => todo!("i64.load8_s"),
-        0x31 => todo!("i64.load8_u"),
-        0x32 => todo!("i64.load16_s"),
-        0x33 => todo!("i64.load16_u"),
-        0x34 => todo!("i64.load32_s"),
-        0x35 => todo!("i64.load32_u"),
-        0x36 => todo!("i32.store"),
-        0x37 => todo!("i64.store"),
-        0x38 => todo!("f32.store"),
-        0x39 => todo!("f64.store"),
-        0x3A => todo!("i32.store8"),
-        0x3B => todo!("i32.store16"),
-        0x3C => todo!("i64.store8"),
-        0x3D => todo!("i64.store16"),
-        0x3E => todo!("i64.store32"),
-        0x3F => todo!("memory.size"),
-        0x40 => todo!("memory.grow"),
-        0x41 => todo!("i32.const"),
-        0x42 => todo!("i64.const"),
-        0x43 => todo!("f32.const"),
-        0x44 => todo!("f64.const"),
+        0x02 => {
+            let (block_type, bytes) = decode_block_type(bytes)?;
+            let (expr, bytes) = decode_expr(bytes)?;
+            Ok((Block { block_type, expr }, bytes))
+        }
+        0x03 => {
+            let (block_type, bytes) = decode_block_type(bytes)?;
+            let (expr, bytes) = decode_expr(bytes)?;
+            Ok((Loop { block_type, expr }, bytes))
+        }
+        0x04 => {
+            let (block_type, bytes) = decode_block_type(bytes)?;
+            let ((then, else_), bytes) = decode_if_block(bytes)?;
+            Ok((
+                If {
+                    block_type,
+                    then,
+                    else_,
+                },
+                bytes,
+            ))
+        }
+        0x0C => {
+            let (label_idx, bytes) = decode_label_idx(bytes)?;
+            Ok((Break { label_idx }, bytes))
+        }
+        0x0D => {
+            let (label_idx, bytes) = decode_label_idx(bytes)?;
+            Ok((BreakIf { label_idx }, bytes))
+        }
+        0x0E => {
+            let (labels, bytes) = decode_label_indices(bytes)?;
+            let (default_label, bytes) = decode_label_idx(bytes)?;
+            Ok((
+                BreakTable {
+                    labels,
+                    default_label,
+                },
+                bytes,
+            ))
+        }
+        0x0F => Ok((Return, bytes)),
+        0x10 => {
+            let (func_idx, bytes) = decode_func_idx(bytes)?;
+            Ok((Call { func_idx }, bytes))
+        }
+        0x11 => {
+            let (type_idx, bytes) = decode_type_idx(bytes)?;
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((
+                CallIndirect {
+                    type_idx,
+                    table_idx,
+                },
+                bytes,
+            ))
+        }
+        0xD0 => {
+            let (ref_type, bytes) = decode_ref_type(bytes)?;
+            Ok((RefNull { ref_type }, bytes))
+        }
+        0xD1 => Ok((RefIsNull, bytes)),
+        0xD2 => {
+            let (func_idx, bytes) = decode_func_idx(bytes)?;
+            Ok((RefFunc { func_idx }, bytes))
+        }
+        0x1A => Ok((Drop, bytes)),
+        0x1B => Ok((
+            Select {
+                value_types: Box::new([]),
+            },
+            bytes,
+        )),
+        0x1C => {
+            let (res, bytes) = decode_result_type(bytes)?;
+            Ok((Select { value_types: res.0 }, bytes))
+        }
+        0x20 => {
+            let (local_idx, bytes) = decode_local_idx(bytes)?;
+            Ok((LocalGet { local_idx }, bytes))
+        }
+        0x21 => {
+            let (local_idx, bytes) = decode_local_idx(bytes)?;
+            Ok((LocalSet { local_idx }, bytes))
+        }
+        0x22 => {
+            let (local_idx, bytes) = decode_local_idx(bytes)?;
+            Ok((LocalTee { local_idx }, bytes))
+        }
+        0x23 => {
+            let (global_idx, bytes) = decode_global_idx(bytes)?;
+            Ok((GlobalGet { global_idx }, bytes))
+        }
+        0x24 => {
+            let (global_idx, bytes) = decode_global_idx(bytes)?;
+            Ok((GlobalSet { global_idx }, bytes))
+        }
+        0x25 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((TableGet { table_idx }, bytes))
+        }
+        0x26 => {
+            let (table_idx, bytes) = decode_table_idx(bytes)?;
+            Ok((TableSet { table_idx }, bytes))
+        }
+        0x28 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Load { memarg }, bytes))
+        }
+        0x29 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load { memarg }, bytes))
+        }
+        0x2A => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((F32Load { memarg }, bytes))
+        }
+        0x2B => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((F64Load { memarg }, bytes))
+        }
+        0x2C => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Load8S { memarg }, bytes))
+        }
+        0x2D => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Load8U { memarg }, bytes))
+        }
+        0x2E => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Load16S { memarg }, bytes))
+        }
+        0x2F => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Load16U { memarg }, bytes))
+        }
+        0x30 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load8S { memarg }, bytes))
+        }
+        0x31 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load8U { memarg }, bytes))
+        }
+        0x32 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load16S { memarg }, bytes))
+        }
+        0x33 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load16U { memarg }, bytes))
+        }
+        0x34 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load32S { memarg }, bytes))
+        }
+        0x35 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Load32U { memarg }, bytes))
+        }
+        0x36 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Store { memarg }, bytes))
+        }
+        0x37 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Store { memarg }, bytes))
+        }
+        0x38 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((F32Store { memarg }, bytes))
+        }
+        0x39 => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((F64Store { memarg }, bytes))
+        }
+        0x3A => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Store8 { memarg }, bytes))
+        }
+        0x3B => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I32Store16 { memarg }, bytes))
+        }
+        0x3C => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Store8 { memarg }, bytes))
+        }
+        0x3D => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Store16 { memarg }, bytes))
+        }
+        0x3E => {
+            let (memarg, bytes) = decode_memarg(bytes)?;
+            Ok((I64Store32 { memarg }, bytes))
+        }
+        0x3F => {
+            let (_, bytes) = decode_mem_idx_zero(bytes)?;
+            Ok((MemorySize, bytes))
+        }
+        0x40 => {
+            let (_, bytes) = decode_mem_idx_zero(bytes)?;
+            Ok((MemoryGrow, bytes))
+        }
+        0x41 => {
+            let (v, bytes) = decode_leb128_signed(bytes)?;
+            if v >= (i32::MIN as i64) && v <= (i32::MAX as i64) {
+                Ok((I32Const { val: v as i32 }, bytes))
+            } else {
+                Err(WasmDecodeError::InvalidConst)
+            }
+        }
+        0x42 => {
+            let (val, bytes) = decode_leb128_signed(bytes)?;
+            Ok((I64Const { val }, bytes))
+        }
+        0x43 => {
+            let (buf, bytes) = take_bytes::<4>(bytes)?;
+            let val = f32::from_le_bytes(buf);
+            Ok((F32Const { val }, bytes))
+        }
+        0x44 => {
+            let (buf, bytes) = take_bytes::<8>(bytes)?;
+            let val = f64::from_le_bytes(buf);
+            Ok((F64Const { val }, bytes))
+        }
         0x45 => Ok((I32EqZ, bytes)),
         0x46 => Ok((I32Eq, bytes)),
         0x47 => Ok((I32Neq, bytes)),
@@ -586,13 +900,31 @@ fn decode_expr(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExpr>> {
     loop {
         let (instr, rest) = decode_instr(bytes)?;
         bytes = rest;
-        match instr {
+        match expr.push_instr(instr) {
             WasmInstruction::ExprEnd => break,
             _ => {}
         }
-        expr.push_instr(instr);
     }
     Ok((expr.build(), bytes))
+}
+
+fn decode_if_block(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<(WasmExpr, Option<WasmExpr>)>> {
+    let mut then = WasmExprBuilder::new();
+    let mut else_ = None::<WasmExprBuilder>;
+    let mut expr = &mut then;
+    loop {
+        let (instr, rest) = decode_instr(bytes)?;
+        bytes = rest;
+        match expr.push_instr(instr) {
+            WasmInstruction::Else => {
+                else_ = Some(WasmExprBuilder::new());
+                expr = else_.as_mut().unwrap();
+            }
+            WasmInstruction::ExprEnd => break,
+            _ => {}
+        }
+    }
+    Ok(((then.build(), else_.map(WasmExprBuilder::build)), bytes))
 }
 
 fn decode_global(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobal>> {
