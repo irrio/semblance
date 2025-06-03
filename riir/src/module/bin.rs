@@ -1,7 +1,9 @@
 use std::string::FromUtf8Error;
 
 use super::{
-    builder::{WasmCode, WasmExprBuilder, WasmModuleBuilder, WasmResultTypeBuilder},
+    builder::{
+        UncheckedWasmModule, WasmCode, WasmExprBuilder, WasmModuleBuilder, WasmResultTypeBuilder,
+    },
     *,
 };
 
@@ -1317,7 +1319,7 @@ fn decode_version(bytes: &[u8]) -> WasmDecodeResult<Decoded<u32>> {
     Ok((u32::from_le_bytes(buf), bytes))
 }
 
-pub fn decode(bytes: &[u8]) -> WasmDecodeResult<WasmModule> {
+pub fn decode(bytes: &[u8]) -> WasmDecodeResult<UncheckedWasmModule> {
     let mut wmod = WasmModuleBuilder::new();
     let (_, bytes) = decode_magic_bytes(bytes)?;
     let (version, bytes) = decode_version(bytes)?;

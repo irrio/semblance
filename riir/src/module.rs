@@ -1,6 +1,7 @@
 mod bin;
 mod builder;
 mod repr;
+mod valid;
 
 use std::{
     fs::File,
@@ -10,11 +11,13 @@ use std::{
 
 pub use bin::{WasmDecodeError, WasmDecodeResult};
 pub use repr::*;
+pub use valid::{WasmValidationError, WasmValidationResult};
 
 #[derive(Debug)]
 pub enum WasmReadError {
     Io(io::Error),
     Decode(WasmDecodeError),
+    Validation(WasmValidationError),
 }
 
 impl repr::WasmModule {
@@ -23,10 +26,7 @@ impl repr::WasmModule {
         let mut buf = Vec::new();
         f.read_to_end(&mut buf).map_err(WasmReadError::Io)?;
         let bytes = buf.into_boxed_slice();
-        bin::decode(&bytes).map_err(WasmReadError::Decode)
-    }
-
-    pub fn decode(bytes: &[u8]) -> WasmDecodeResult<Self> {
-        bin::decode(bytes)
+        let wmod = bin::decode(&bytes).map_err(WasmReadError::Decode)?;
+        wmod.validate().map_err(WasmReadError::Validation)
     }
 }

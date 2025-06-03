@@ -129,7 +129,7 @@ fn main() {
     let args = CliArgs::parse_or_exit();
     println!("{:?}", args);
 
-    let module = WasmModule::read(&args.module_path).expect("failed to read module");
+    let module = WasmModule::read(&args.module_path).expect("failed to load module");
     println!("{:?}", module);
 
     if let Some(InvokeArgs { fn_name, argv }) = args.invoke {

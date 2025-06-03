@@ -1,4 +1,4 @@
-use super::*;
+use super::{valid::validate, *};
 
 #[derive(Default)]
 pub struct WasmModuleBuilder {
@@ -124,7 +124,7 @@ impl WasmModuleBuilder {
         self.customs.push(custom);
     }
 
-    pub fn build(self) -> WasmModule {
+    pub fn build(self) -> UncheckedWasmModule {
         let funcs = self
             .funcs
             .into_iter()
@@ -135,7 +135,7 @@ impl WasmModuleBuilder {
                 body: code.body,
             })
             .collect::<Vec<_>>();
-        WasmModule {
+        UncheckedWasmModule(WasmModule {
             version: self.version,
             types: self.types.into_boxed_slice(),
             funcs: funcs.into_boxed_slice(),
@@ -148,13 +148,24 @@ impl WasmModuleBuilder {
             imports: self.imports.into_boxed_slice(),
             exports: self.exports.into_boxed_slice(),
             customs: self.customs.into_boxed_slice(),
-        }
+        })
     }
 }
 
-impl Into<WasmModule> for WasmModuleBuilder {
-    fn into(self) -> WasmModule {
-        self.build()
+impl TryInto<WasmModule> for WasmModuleBuilder {
+    type Error = WasmValidationError;
+
+    fn try_into(self) -> Result<WasmModule, Self::Error> {
+        self.build().validate()
+    }
+}
+
+pub struct UncheckedWasmModule(WasmModule);
+
+impl UncheckedWasmModule {
+    pub fn validate(self) -> WasmValidationResult<WasmModule> {
+        validate(&self.0)?;
+        Ok(self.0)
     }
 }
 
