@@ -1,5 +1,6 @@
 mod bin;
 mod builder;
+#[macro_use]
 mod repr;
 mod valid;
 

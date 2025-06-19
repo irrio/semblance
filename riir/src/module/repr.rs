@@ -14,26 +14,26 @@ pub struct WasmModule {
     pub customs: Box<[WasmCustom]>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmTypeIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct WasmFuncIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmTableIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmMemIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmGlobalIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmElemIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmDataIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmLabelIdx(pub u32);
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct WasmLocalIdx(pub u32);
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WasmNumType {
     I32,
     I64,
@@ -41,28 +41,52 @@ pub enum WasmNumType {
     F64,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WasmVecType {
     V128,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WasmRefType {
     FuncRef,
     ExternRef,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WasmValueType {
     Num(WasmNumType),
     Vec(WasmVecType),
     Ref(WasmRefType),
 }
 
-#[derive(Debug)]
+macro_rules! t {
+    (i32) => {
+        crate::module::WasmValueType::Num(crate::module::WasmNumType::I32)
+    };
+    (i64) => {
+        crate::module::WasmValueType::Num(crate::module::WasmNumType::I64)
+    };
+    (f32) => {
+        crate::module::WasmValueType::Num(crate::module::WasmNumType::F32)
+    };
+    (f64) => {
+        crate::module::WasmValueType::Num(crate::module::WasmNumType::F64)
+    };
+    (funcref) => {
+        crate::module::WasmValueType::Ref(crate::module::WasmRefType::FuncRef)
+    };
+    (externref) => {
+        crate::module::WasmValueType::Ref(crate::module::WasmRefType::ExternRef)
+    };
+    (v128) => {
+        crate::module::WasmValueType::Vec(crate::module::WasmVecType::V128)
+    };
+}
+
+#[derive(Debug, Clone)]
 pub struct WasmResultType(pub Box<[WasmValueType]>);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WasmFuncType {
     pub input_type: WasmResultType,
     pub output_type: WasmResultType,
@@ -437,7 +461,7 @@ pub struct WasmMemType {
     pub limits: WasmLimits,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum WasmGlobalMutability {
     Mutable,
     Immutable,
