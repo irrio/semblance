@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use semblance::module::WasmModule;
 
@@ -125,11 +125,21 @@ impl CliArgs {
     }
 }
 
+fn read_module_or_exit(path: &Path) -> WasmModule {
+    match WasmModule::read(path) {
+        Ok(module) => module,
+        Err(e) => {
+            eprintln!("failed to load module: {:?}", e);
+            std::process::exit(3);
+        }
+    }
+}
+
 fn main() {
     let args = CliArgs::parse_or_exit();
     println!("{:?}", args);
 
-    let module = WasmModule::read(&args.module_path).expect("failed to load module");
+    let module = read_module_or_exit(&args.module_path);
     println!("{:?}", module);
 
     if let Some(InvokeArgs { fn_name, argv }) = args.invoke {

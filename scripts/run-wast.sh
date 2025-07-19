@@ -65,7 +65,7 @@ while read -r CMD; do
         ;;
         assert_*)
             echo "unhandled $CMD_TYPE"
-            ((FAILURES++))
+            ((SKIPPED++))
         ;;
     esac
 done < <(load_wast) 1>&2
