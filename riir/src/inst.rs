@@ -1,5 +1,7 @@
 use crate::module::*;
 
+pub mod instantiate;
+
 pub struct WasmStack<'wmod> {
     value_stack: Vec<WasmValue>,
     label_stack: Vec<WasmLabel<'wmod>>,
