@@ -83,10 +83,10 @@ macro_rules! t {
     };
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WasmResultType(pub Box<[WasmValueType]>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WasmFuncType {
     pub input_type: WasmResultType,
     pub output_type: WasmResultType,
@@ -467,7 +467,7 @@ pub enum WasmGlobalMutability {
     Immutable,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub struct WasmGlobalType {
     pub mutability: WasmGlobalMutability,
     pub val_type: WasmValueType,
