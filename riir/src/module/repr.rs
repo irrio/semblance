@@ -33,6 +33,10 @@ pub struct WasmLabelIdx(pub u32);
 #[derive(Debug, Copy, Clone)]
 pub struct WasmLocalIdx(pub u32);
 
+impl WasmMemIdx {
+    pub const ZERO: WasmMemIdx = WasmMemIdx(0);
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum WasmNumType {
     I32,

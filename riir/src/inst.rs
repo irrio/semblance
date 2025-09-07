@@ -1,28 +1,50 @@
+use table::{
+    StoreTable, WasmDataAddr, WasmElemAddr, WasmFuncAddr, WasmGlobalAddr, WasmInstanceAddr,
+    WasmMemAddr, WasmTableAddr,
+};
+
 use crate::module::*;
 
 pub mod instantiate;
+pub mod table;
+
+pub struct WasmValueStack(Vec<WasmValue>);
+
+impl WasmValueStack {
+    pub fn new() -> Self {
+        WasmValueStack(Vec::new())
+    }
+
+    pub fn push<I: Into<WasmValue>>(&mut self, val: I) {
+        self.0.push(val.into())
+    }
+
+    pub fn pop(&mut self) -> WasmValue {
+        self.0.pop().expect("value stack underflow")
+    }
+}
 
 pub struct WasmStack<'wmod> {
-    value_stack: Vec<WasmValue>,
+    value_stack: WasmValueStack,
     label_stack: Vec<WasmLabel<'wmod>>,
-    call_stack: Vec<WasmFrame<'wmod>>,
+    call_stack: Vec<WasmFrame>,
 }
 
 impl<'wmod> WasmStack<'wmod> {
     pub fn new() -> Self {
         WasmStack {
-            value_stack: Vec::new(),
+            value_stack: WasmValueStack::new(),
             label_stack: Vec::new(),
             call_stack: Vec::new(),
         }
     }
 
-    pub fn push_value(&mut self, val: WasmValue) {
+    pub fn push_value<V: Into<WasmValue>>(&mut self, val: V) {
         self.value_stack.push(val);
     }
 
     pub fn pop_value(&mut self) -> WasmValue {
-        self.value_stack.pop().expect("value stack underflow")
+        self.value_stack.pop()
     }
 
     pub fn push_label(&mut self, label: WasmLabel<'wmod>) {
@@ -33,19 +55,23 @@ impl<'wmod> WasmStack<'wmod> {
         self.label_stack.pop().expect("label stack underflow")
     }
 
-    pub fn push_frame(&mut self, frame: WasmFrame<'wmod>) {
+    pub fn push_frame(&mut self, frame: WasmFrame) {
         self.call_stack.push(frame);
     }
 
-    pub fn pop_frame(&mut self) -> WasmFrame<'wmod> {
+    pub fn pop_frame(&mut self) -> WasmFrame {
         self.call_stack.pop().expect("call stack underflow")
+    }
+
+    pub fn current_frame(&mut self) -> &WasmFrame {
+        self.call_stack.last().expect("no call frame")
     }
 }
 
-pub struct WasmFrame<'wmod> {
+pub struct WasmFrame {
     pub arity: u32,
     pub locals: Box<[WasmValue]>,
-    pub wmod: &'wmod WasmModule,
+    pub winst_id: WasmInstanceAddr,
 }
 
 pub struct WasmLabel<'wmod> {
@@ -58,10 +84,63 @@ pub struct WasmModuleInst<'wmod> {
     pub funcaddrs: Box<[WasmFuncAddr]>,
     pub tableaddrs: Box<[WasmTableAddr]>,
     pub memaddrs: Box<[WasmMemAddr]>,
-    pub globaladdrs: Box<WasmGlobalAddr>,
-    pub elemaddrs: Box<WasmElemAddr>,
-    pub dataaddrs: Box<WasmDataAddr>,
-    pub exports: Box<WasmExportInst<'wmod>>,
+    pub globaladdrs: Box<[WasmGlobalAddr]>,
+    pub elemaddrs: Box<[WasmElemAddr]>,
+    pub dataaddrs: Box<[WasmDataAddr]>,
+    pub exports: Box<[WasmExportInst<'wmod>]>,
+}
+
+pub trait WasmIdx {
+    type Addr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr;
+}
+
+impl WasmIdx for WasmFuncIdx {
+    type Addr = WasmFuncAddr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr {
+        unsafe { *winst.funcaddrs.get_unchecked(self.0 as usize) }
+    }
+}
+
+impl WasmIdx for WasmTableIdx {
+    type Addr = WasmTableAddr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr {
+        unsafe { *winst.tableaddrs.get_unchecked(self.0 as usize) }
+    }
+}
+
+impl WasmIdx for WasmMemIdx {
+    type Addr = WasmMemAddr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr {
+        unsafe { *winst.memaddrs.get_unchecked(self.0 as usize) }
+    }
+}
+
+impl WasmIdx for WasmGlobalIdx {
+    type Addr = WasmGlobalAddr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr {
+        unsafe { *winst.globaladdrs.get_unchecked(self.0 as usize) }
+    }
+}
+
+impl WasmIdx for WasmElemIdx {
+    type Addr = WasmElemAddr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr {
+        unsafe { *winst.elemaddrs.get_unchecked(self.0 as usize) }
+    }
+}
+
+impl WasmIdx for WasmDataIdx {
+    type Addr = WasmDataAddr;
+    fn resolve_addr(self, winst: &WasmModuleInst) -> Self::Addr {
+        unsafe { *winst.dataaddrs.get_unchecked(self.0 as usize) }
+    }
+}
+
+impl<'wmod> WasmModuleInst<'wmod> {
+    pub fn addr_of<I: WasmIdx>(&self, idx: I) -> I::Addr {
+        idx.resolve_addr(self)
+    }
 }
 
 pub struct WasmExportInst<'wmod> {
@@ -76,17 +155,18 @@ pub enum WasmExternVal {
     Global(WasmGlobalAddr),
 }
 
-pub struct WasmStore<'winst, 'wmod> {
-    pub funcs: Box<[WasmFuncInst<'winst, 'wmod>]>,
-    pub tables: Box<[WasmTableInst<'wmod>]>,
-    pub mems: Box<[WasmMemInst<'wmod>]>,
-    pub globals: Box<[WasmGlobalInst<'wmod>]>,
-    pub elems: Box<[WasmElemInst]>,
-    pub datas: Box<[WasmDataInst<'wmod>]>,
+pub struct WasmStore<'wmod> {
+    pub instances: StoreTable<WasmModuleInst<'wmod>>,
+    pub funcs: StoreTable<WasmFuncInst<'wmod>>,
+    pub tables: StoreTable<WasmTableInst<'wmod>>,
+    pub mems: StoreTable<WasmMemInst<'wmod>>,
+    pub globals: StoreTable<WasmGlobalInst<'wmod>>,
+    pub elems: StoreTable<WasmElemInst>,
+    pub datas: StoreTable<WasmDataInst<'wmod>>,
 }
 
 pub struct WasmDataInst<'wmod> {
-    pub data: &'wmod [u8],
+    pub data: Option<&'wmod [u8]>,
 }
 
 pub struct WasmElemInst {
@@ -104,19 +184,23 @@ pub struct WasmMemInst<'wmod> {
     pub data: Vec<u8>,
 }
 
+impl<'wmod> WasmMemInst<'wmod> {
+    pub const PAGE_SIZE: usize = 65536;
+}
+
 pub struct WasmTableInst<'wmod> {
     pub type_: &'wmod WasmTableType,
     pub elems: Vec<WasmRefValue>,
 }
 
-pub struct WasmFuncInst<'winst, 'wmod> {
-    pub type_: WasmFuncType,
-    pub impl_: WasmFuncImpl<'winst, 'wmod>,
+pub struct WasmFuncInst<'wmod> {
+    pub type_: &'wmod WasmFuncType,
+    pub impl_: WasmFuncImpl<'wmod>,
 }
 
-pub enum WasmFuncImpl<'winst, 'wmod> {
+pub enum WasmFuncImpl<'wmod> {
     Wasm {
-        module: &'winst WasmModuleInst<'wmod>,
+        winst_id: WasmInstanceAddr,
         func: &'wmod WasmFunc,
     },
     Host {
@@ -128,14 +212,48 @@ pub type WasmHostFunc = *const u8;
 
 pub enum WasmResult {
     Ok(WasmValue),
-    Trap,
+    Trap(WasmTrap),
 }
+
+pub struct WasmTrap {}
 
 #[derive(Clone, Copy)]
 pub union WasmValue {
     pub num: WasmNumValue,
     pub vec: WasmVecValue,
     pub ref_: WasmRefValue,
+}
+
+impl Into<WasmValue> for i32 {
+    fn into(self) -> WasmValue {
+        WasmValue {
+            num: WasmNumValue { i32: self },
+        }
+    }
+}
+
+impl Into<WasmValue> for i64 {
+    fn into(self) -> WasmValue {
+        WasmValue {
+            num: WasmNumValue { i64: self },
+        }
+    }
+}
+
+impl Into<WasmValue> for f32 {
+    fn into(self) -> WasmValue {
+        WasmValue {
+            num: WasmNumValue { f32: self },
+        }
+    }
+}
+
+impl Into<WasmValue> for f64 {
+    fn into(self) -> WasmValue {
+        WasmValue {
+            num: WasmNumValue { f64: self },
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -154,23 +272,17 @@ pub union WasmRefValue {
     pub extern_: WasmExternAddr,
 }
 
-#[derive(Copy, Clone)]
-pub struct WasmFuncAddr(pub u32);
+#[derive(Debug, Copy, Clone)]
+pub struct WasmExternAddr(u32);
 
-#[derive(Copy, Clone)]
-pub struct WasmExternAddr(pub u32);
+impl Into<WasmValue> for WasmRefValue {
+    fn into(self) -> WasmValue {
+        WasmValue { ref_: self }
+    }
+}
 
-#[derive(Copy, Clone)]
-pub struct WasmTableAddr(pub u32);
-
-#[derive(Copy, Clone)]
-pub struct WasmMemAddr(pub u32);
-
-#[derive(Copy, Clone)]
-pub struct WasmGlobalAddr(pub u32);
-
-#[derive(Copy, Clone)]
-pub struct WasmElemAddr(pub u32);
-
-#[derive(Copy, Clone)]
-pub struct WasmDataAddr(pub u32);
+impl WasmRefValue {
+    pub const NULL: WasmRefValue = WasmRefValue {
+        func: WasmFuncAddr::NULL,
+    };
+}

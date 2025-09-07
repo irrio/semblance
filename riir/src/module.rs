@@ -10,8 +10,6 @@ use std::{
     path::Path,
 };
 
-use crate::inst::{WasmExternVal, WasmModuleInst, WasmStore, instantiate::WasmInstantiationResult};
-
 pub use bin::{WasmDecodeError, WasmDecodeResult};
 pub use repr::*;
 pub use valid::{WasmValidationError, WasmValidationResult};
@@ -31,13 +29,5 @@ impl repr::WasmModule {
         let bytes = buf.into_boxed_slice();
         let wmod = bin::decode(&bytes).map_err(WasmReadError::Decode)?;
         wmod.validate().map_err(WasmReadError::Validation)
-    }
-
-    pub fn instantiate(
-        &self,
-        store: &mut WasmStore,
-        externvals: &[WasmExternVal],
-    ) -> WasmInstantiationResult<WasmModuleInst> {
-        crate::inst::instantiate::instantiate(self, store, externvals)
     }
 }
