@@ -102,13 +102,14 @@ impl<'wmod> WasmStore<'wmod> {
                     exec(&mut stack, self, &expr);
                 }
                 WasmElemMode::Declarative => {
-                    exec(
-                        &mut stack,
-                        self,
-                        &[WasmInstruction::ElemDrop {
+                    use WasmInstruction::*;
+                    let expr = [
+                        ElemDrop {
                             elem_idx: WasmElemIdx(i as u32),
-                        }],
-                    );
+                        },
+                        ExprEnd,
+                    ];
+                    exec(&mut stack, self, &expr);
                 }
                 _ => continue,
             }
@@ -138,6 +139,12 @@ impl<'wmod> WasmStore<'wmod> {
                 }
                 _ => continue,
             }
+        }
+
+        if let Some(func_idx) = wmod.start {
+            use WasmInstruction::*;
+            let expr = [Call { func_idx }, ExprEnd];
+            exec(&mut stack, self, &expr);
         }
 
         stack.pop_frame();
