@@ -2,9 +2,9 @@ use crate::{
     exec::exec,
     inst::{WasmRefValue, WasmStack},
     module::{
-        WasmData, WasmElemIdx, WasmElemMode, WasmExportDesc, WasmExpr, WasmFunc, WasmFuncType,
-        WasmGlobalType, WasmImportDesc, WasmInstruction, WasmLimits, WasmMemType, WasmRefType,
-        WasmTableType,
+        WasmData, WasmDataIdx, WasmDataMode, WasmElemIdx, WasmElemMode, WasmExportDesc, WasmExpr,
+        WasmFunc, WasmFuncType, WasmGlobalType, WasmImportDesc, WasmInstruction, WasmLimits,
+        WasmMemType, WasmRefType, WasmTableType,
     },
 };
 
@@ -109,6 +109,32 @@ impl<'wmod> WasmStore<'wmod> {
                             elem_idx: WasmElemIdx(i as u32),
                         }],
                     );
+                }
+                _ => continue,
+            }
+        }
+
+        for (i, data) in wmod.datas.iter().enumerate() {
+            match &data.mode {
+                WasmDataMode::Active {
+                    mem_idx: _,
+                    offset_expr,
+                } => {
+                    let n = data.bytes.len();
+                    use WasmInstruction::*;
+                    let expr = [
+                        I32Const { val: 0 },
+                        I32Const { val: n as i32 },
+                        MemoryInit {
+                            data_idx: WasmDataIdx(i as u32),
+                        },
+                        DataDrop {
+                            data_idx: WasmDataIdx(i as u32),
+                        },
+                        ExprEnd,
+                    ];
+                    exec(&mut stack, self, &offset_expr.0);
+                    exec(&mut stack, self, &expr);
                 }
                 _ => continue,
             }
