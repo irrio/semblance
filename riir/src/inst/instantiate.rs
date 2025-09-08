@@ -1,8 +1,10 @@
 use crate::{
+    exec::exec,
     inst::{WasmRefValue, WasmStack},
     module::{
-        WasmData, WasmExportDesc, WasmExpr, WasmFunc, WasmFuncType, WasmGlobalType, WasmImportDesc,
-        WasmInstruction, WasmLimits, WasmMemType, WasmRefType, WasmTableType,
+        WasmData, WasmElemIdx, WasmElemMode, WasmExportDesc, WasmExpr, WasmFunc, WasmFuncType,
+        WasmGlobalType, WasmImportDesc, WasmInstruction, WasmLimits, WasmMemType, WasmRefType,
+        WasmTableType,
     },
 };
 
@@ -76,7 +78,43 @@ impl<'wmod> WasmStore<'wmod> {
             winst_id,
         });
 
-        // TODO
+        for (i, elem) in wmod.elems.iter().enumerate() {
+            match &elem.elem_mode {
+                WasmElemMode::Active {
+                    table_idx,
+                    offset_expr,
+                } => {
+                    let n = elem.init.len();
+                    use WasmInstruction::*;
+                    let expr = [
+                        I32Const { val: 0 },
+                        I32Const { val: n as i32 },
+                        TableInit {
+                            table_idx: *table_idx,
+                            elem_idx: WasmElemIdx(i as u32),
+                        },
+                        ElemDrop {
+                            elem_idx: WasmElemIdx(i as u32),
+                        },
+                        ExprEnd,
+                    ];
+                    exec(&mut stack, self, &offset_expr.0);
+                    exec(&mut stack, self, &expr);
+                }
+                WasmElemMode::Declarative => {
+                    exec(
+                        &mut stack,
+                        self,
+                        &[WasmInstruction::ElemDrop {
+                            elem_idx: WasmElemIdx(i as u32),
+                        }],
+                    );
+                }
+                _ => continue,
+            }
+        }
+
+        stack.pop_frame();
 
         Ok(winst_id)
     }
