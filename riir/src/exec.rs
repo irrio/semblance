@@ -1,5 +1,5 @@
 use crate::{
-    inst::{WasmRefValue, WasmStack, WasmStore, WasmTrap},
+    inst::{WasmNumValue, WasmRefValue, WasmStack, WasmStore, WasmTrap},
     module::{WasmInstruction, WasmMemIdx},
 };
 
@@ -7,7 +7,7 @@ pub fn exec(
     stack: &mut WasmStack,
     store: &mut WasmStore,
     expr: &[WasmInstruction],
-) -> Option<WasmTrap> {
+) -> Result<(), WasmTrap> {
     let mut ic = 0;
     loop {
         use WasmInstruction::*;
@@ -16,6 +16,11 @@ pub fn exec(
             I64Const { val } => stack.push_value(*val),
             F32Const { val } => stack.push_value(*val),
             F64Const { val } => stack.push_value(*val),
+            I32Add => {
+                let a = stack.pop_value();
+                let b = stack.pop_value();
+                stack.push_value(unsafe { a.num.i32 + b.num.i32 });
+            }
             TableInit {
                 table_idx,
                 elem_idx,
@@ -54,11 +59,16 @@ pub fn exec(
                 let globaladdr = store.instances.resolve(frame.winst_id).addr_of(*global_idx);
                 stack.push_value(store.globals.resolve(globaladdr).val);
             }
-            Unreachable => return Some(WasmTrap {}),
+            LocalGet { local_idx } => {
+                let frame = stack.current_frame();
+                let val = frame.locals[local_idx.0 as usize];
+                stack.push_value(val);
+            }
+            Unreachable => return Err(WasmTrap {}),
             ExprEnd => break,
             instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
         ic += 1;
     }
-    None
+    Ok(())
 }

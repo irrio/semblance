@@ -1,9 +1,11 @@
+use std::fmt::Display;
+
 use table::{
     StoreTable, WasmDataAddr, WasmElemAddr, WasmFuncAddr, WasmGlobalAddr, WasmInstanceAddr,
     WasmMemAddr, WasmTableAddr,
 };
 
-use crate::module::*;
+use crate::{exec::exec, module::*};
 
 pub mod instantiate;
 pub mod table;
@@ -148,6 +150,7 @@ pub struct WasmExportInst<'wmod> {
     pub value: WasmExternVal,
 }
 
+#[derive(Debug)]
 pub enum WasmExternVal {
     Func(WasmFuncAddr),
     Table(WasmTableAddr),
@@ -163,6 +166,52 @@ pub struct WasmStore<'wmod> {
     pub globals: StoreTable<WasmGlobalInst<'wmod>>,
     pub elems: StoreTable<WasmElemInst>,
     pub datas: StoreTable<WasmDataInst<'wmod>>,
+}
+
+impl<'wmod> WasmStore<'wmod> {
+    pub fn new() -> Self {
+        WasmStore {
+            instances: StoreTable::new(),
+            funcs: StoreTable::new(),
+            tables: StoreTable::new(),
+            mems: StoreTable::new(),
+            globals: StoreTable::new(),
+            elems: StoreTable::new(),
+            datas: StoreTable::new(),
+        }
+    }
+
+    pub fn invoke(
+        &mut self,
+        funcaddr: WasmFuncAddr,
+        args: Box<[WasmValue]>,
+    ) -> Result<DynamicWasmResult<'wmod>, WasmTrap> {
+        let func = self.funcs.resolve(funcaddr);
+        match func.impl_ {
+            WasmFuncImpl::Wasm { winst_id, func } => {
+                let mut stack = WasmStack::new();
+                // todo: typecheck args
+                let ty = &self.instances.resolve(winst_id).types[func.type_idx.0 as usize];
+                let arity = ty.output_type.0.len() as u32;
+                stack.push_frame(WasmFrame {
+                    arity,
+                    locals: args,
+                    winst_id,
+                });
+                stack.push_label(WasmLabel { arity, instr: &[] });
+                exec(&mut stack, self, &func.body.0)?;
+                let mut out = Vec::with_capacity(ty.output_type.0.len());
+                for _ in 0..ty.output_type.0.len() {
+                    out.push(stack.pop_value());
+                }
+                Ok(DynamicWasmResult {
+                    ty: &ty.output_type.0,
+                    res: WasmResult(out),
+                })
+            }
+            WasmFuncImpl::Host { hostfunc: _ } => todo!(),
+        }
+    }
 }
 
 pub struct WasmDataInst<'wmod> {
@@ -210,11 +259,45 @@ pub enum WasmFuncImpl<'wmod> {
 
 pub type WasmHostFunc = *const u8;
 
-pub enum WasmResult {
-    Ok(WasmValue),
-    Trap(WasmTrap),
+pub struct WasmResult(pub Vec<WasmValue>);
+
+pub struct DynamicWasmResult<'wmod> {
+    pub ty: &'wmod [WasmValueType],
+    pub res: WasmResult,
 }
 
+impl<'wmod> Display for DynamicWasmResult<'wmod> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.ty.len() != 1 {
+            write!(f, "(")?;
+        }
+        for (i, (ty, val)) in self.ty.iter().zip(self.res.0.iter()).enumerate() {
+            match ty {
+                WasmValueType::Num(numt) => match numt {
+                    WasmNumType::I32 => write!(f, "{}", unsafe { val.num.i32 })?,
+                    WasmNumType::I64 => write!(f, "{}", unsafe { val.num.i64 })?,
+                    WasmNumType::F32 => write!(f, "{}", unsafe { val.num.f32 })?,
+                    WasmNumType::F64 => write!(f, "{}", unsafe { val.num.f64 })?,
+                },
+                WasmValueType::Vec(vect) => {
+                    todo!()
+                }
+                WasmValueType::Ref(reft) => {
+                    todo!()
+                }
+            }
+            if i < self.ty.len() - 1 {
+                write!(f, ", ")?;
+            }
+        }
+        if self.ty.len() != 1 {
+            write!(f, ")")?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
 pub struct WasmTrap {}
 
 #[derive(Clone, Copy)]

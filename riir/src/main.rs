@@ -1,6 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+    num::{ParseFloatError, ParseIntError},
+    path::{Path, PathBuf},
+};
 
-use semblance::module::WasmModule;
+use semblance::{
+    inst::{WasmExternVal, WasmNumValue, WasmStore, WasmValue},
+    module::{WasmModule, WasmNumType, WasmValueType},
+};
 
 const HELP_TEXT: &'static str = "
 semblance <MODULE> [OPTIONS]
@@ -135,18 +141,80 @@ fn read_module_or_exit(path: &Path) -> WasmModule {
     }
 }
 
+#[derive(Debug)]
+enum ParseArgError {
+    Int(ParseIntError),
+    Float(ParseFloatError),
+}
+
+fn parse_arg_with_type(ty: &WasmValueType, argv: &str) -> Result<WasmValue, ParseArgError> {
+    let parsed = match ty {
+        WasmValueType::Num(numt) => match numt {
+            WasmNumType::I32 => WasmValue {
+                num: WasmNumValue {
+                    i32: argv.parse().map_err(ParseArgError::Int)?,
+                },
+            },
+            WasmNumType::I64 => WasmValue {
+                num: WasmNumValue {
+                    i64: argv.parse().map_err(ParseArgError::Int)?,
+                },
+            },
+            WasmNumType::F32 => WasmValue {
+                num: WasmNumValue {
+                    f32: argv.parse().map_err(ParseArgError::Float)?,
+                },
+            },
+            WasmNumType::F64 => WasmValue {
+                num: WasmNumValue {
+                    f64: argv.parse().map_err(ParseArgError::Float)?,
+                },
+            },
+        },
+        WasmValueType::Vec(vect) => todo!(),
+        WasmValueType::Ref(reft) => todo!(),
+    };
+    Ok(parsed)
+}
+
+fn parse_args_for_input_type(
+    ty: &[WasmValueType],
+    argv: &[String],
+) -> Result<Box<[WasmValue]>, ParseArgError> {
+    assert_eq!(ty.len(), argv.len());
+    let mut parsed = Vec::with_capacity(ty.len());
+    for (ty, argv) in ty.iter().zip(argv) {
+        parsed.push(parse_arg_with_type(ty, argv)?);
+    }
+    Ok(parsed.into_boxed_slice())
+}
+
 fn main() {
     let args = CliArgs::parse_or_exit();
-    println!("{:?}", args);
-
     let module = read_module_or_exit(&args.module_path);
-    println!("{:?}", module);
 
     if let Some(InvokeArgs { fn_name, argv }) = args.invoke {
-        eprintln!(
-            "Invoking {} with args: {:?} not implemented yet!",
-            fn_name, argv
-        );
-        std::process::exit(2);
+        let mut store = WasmStore::new();
+        let winst_id = store
+            .instantiate(&module, &[])
+            .expect("failed to instantiate");
+        let funcaddr = store
+            .instances
+            .resolve(winst_id)
+            .exports
+            .iter()
+            .find_map(|exp| {
+                if exp.name == fn_name {
+                    if let WasmExternVal::Func(funcaddr) = exp.value {
+                        return Some(funcaddr);
+                    }
+                }
+                None
+            })
+            .expect("no function export found with name");
+        let ty = store.funcs.resolve(funcaddr).type_.input_type.0.as_ref();
+        let args = parse_args_for_input_type(ty, &argv).expect("failed to parse args");
+        let wres = store.invoke(funcaddr, args).expect("trap!");
+        println!("{}", wres);
     }
 }

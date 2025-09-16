@@ -18,6 +18,7 @@ use super::{
     },
 };
 
+#[derive(Debug)]
 pub enum WasmInstantiationError {
     ExternValArity { expected: usize, actual: usize },
     InvalidFuncAddr,
