@@ -1,5 +1,5 @@
 use crate::{
-    inst::{WasmNumValue, WasmRefValue, WasmStack, WasmStore, WasmTrap},
+    inst::{WasmFrame, WasmFuncImpl, WasmNumValue, WasmRefValue, WasmStack, WasmStore, WasmTrap},
     module::{WasmInstruction, WasmMemIdx},
 };
 
@@ -34,7 +34,7 @@ pub fn exec(
                 let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
                 let data = store.datas.resolve(winst.addr_of(*data_idx));
                 let data_bytes = data.data.expect("use of dropped data");
-                (&mut mem.data[d..n]).copy_from_slice(&data_bytes[s..n]);
+                (&mut mem.data[d..(d + n)]).copy_from_slice(&data_bytes[s..(s + n)]);
             }
             ElemDrop { elem_idx } => {
                 let frame = stack.current_frame();
@@ -63,6 +63,31 @@ pub fn exec(
                 let frame = stack.current_frame();
                 let val = frame.locals[local_idx.0 as usize];
                 stack.push_value(val);
+            }
+            Call { func_idx } => {
+                let winst_id = stack.current_frame().winst_id;
+                let funcaddr = store.instances.resolve(winst_id).addr_of(*func_idx);
+                let func = store.funcs.resolve(funcaddr);
+                let args = stack.pop_values(func.type_.input_type.0.len());
+                match func.impl_ {
+                    WasmFuncImpl::Host { hostfunc } => {
+                        let ret = hostfunc(store, winst_id, &args);
+                        for val in ret {
+                            stack.push_value(val);
+                        }
+                    }
+                    WasmFuncImpl::Wasm {
+                        winst_id,
+                        func: _funcimpl,
+                    } => {
+                        stack.push_frame(WasmFrame {
+                            arity: func.type_.output_type.0.len() as u32,
+                            locals: Box::new([]),
+                            winst_id,
+                        });
+                        todo!();
+                    }
+                }
             }
             Unreachable => return Err(WasmTrap {}),
             ExprEnd => break,

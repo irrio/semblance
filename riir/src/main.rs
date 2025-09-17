@@ -1,11 +1,13 @@
 use std::{
+    ffi::{CStr, c_char},
+    io::{Write, stdout},
     num::{ParseFloatError, ParseIntError},
     path::{Path, PathBuf},
 };
 
 use semblance::{
-    inst::{WasmExternVal, WasmNumValue, WasmStore, WasmValue},
-    module::{WasmModule, WasmNumType, WasmValueType},
+    inst::{WasmExternVal, WasmNumValue, WasmStore, WasmValue, table::WasmInstanceAddr},
+    module::{WasmImportDesc, WasmMemIdx, WasmModule, WasmNumType, WasmValueType},
 };
 
 const HELP_TEXT: &'static str = "
@@ -189,14 +191,57 @@ fn parse_args_for_input_type(
     Ok(parsed.into_boxed_slice())
 }
 
+#[derive(Debug)]
+enum LinkError<'wmod> {
+    UnknownSymbol(&'wmod str, &'wmod str),
+}
+
+fn hostcall_puts(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let offset = unsafe { args.get_unchecked(0).num.i32 };
+    let memaddr = store.instances.resolve(winst_id).addr_of(WasmMemIdx::ZERO);
+    let mem = store.mems.resolve(memaddr);
+    let ptr = (&mem.data[offset as usize..]).as_ptr().cast::<c_char>();
+    let cstr = unsafe { CStr::from_ptr(ptr) };
+    let str = cstr.to_str().expect("invalid utf8");
+    println!("{}", str);
+    Box::new([])
+}
+
+fn resolve_imports<'wmod>(
+    store: &mut WasmStore<'wmod>,
+    wmod: &'wmod WasmModule,
+) -> Result<Vec<WasmExternVal>, LinkError<'wmod>> {
+    let mut externvals = Vec::with_capacity(wmod.imports.len());
+    for import in &wmod.imports {
+        if let WasmImportDesc::Func(typeidx) = import.desc {
+            let ty = &wmod.types[typeidx.0 as usize];
+            if import.module_name.0.as_ref() == "env" && import.item_name.0.as_ref() == "puts" {
+                let funcaddr = store.alloc_hostfunc(ty, &hostcall_puts);
+                externvals.push(WasmExternVal::Func(funcaddr));
+                continue;
+            }
+        }
+        return Err(LinkError::UnknownSymbol(
+            &import.module_name.0,
+            &import.item_name.0,
+        ));
+    }
+    Ok(externvals)
+}
+
 fn main() {
     let args = CliArgs::parse_or_exit();
     let module = read_module_or_exit(&args.module_path);
 
     if let Some(InvokeArgs { fn_name, argv }) = args.invoke {
         let mut store = WasmStore::new();
+        let externvals = resolve_imports(&mut store, &module).expect("link error");
         let winst_id = store
-            .instantiate(&module, &[])
+            .instantiate(&module, &externvals)
             .expect("failed to instantiate");
         let funcaddr = store
             .instances

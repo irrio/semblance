@@ -49,6 +49,14 @@ impl<'wmod> WasmStack<'wmod> {
         self.value_stack.pop()
     }
 
+    pub fn pop_values(&mut self, n: usize) -> Vec<WasmValue> {
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            out.push(self.pop_value());
+        }
+        out
+    }
+
     pub fn push_label(&mut self, label: WasmLabel<'wmod>) {
         self.label_stack.push(label);
     }
@@ -212,6 +220,17 @@ impl<'wmod> WasmStore<'wmod> {
             WasmFuncImpl::Host { hostfunc: _ } => todo!(),
         }
     }
+
+    pub fn alloc_hostfunc(
+        &mut self,
+        type_: &'wmod WasmFuncType,
+        hostfunc: WasmHostFunc,
+    ) -> WasmFuncAddr {
+        self.funcs.add(WasmFuncInst {
+            type_,
+            impl_: WasmFuncImpl::Host { hostfunc },
+        })
+    }
 }
 
 pub struct WasmDataInst<'wmod> {
@@ -257,7 +276,8 @@ pub enum WasmFuncImpl<'wmod> {
     },
 }
 
-pub type WasmHostFunc = *const u8;
+pub type WasmHostFunc =
+    &'static dyn Fn(&mut WasmStore, WasmInstanceAddr, &[WasmValue]) -> Box<[WasmValue]>;
 
 pub struct WasmResult(pub Vec<WasmValue>);
 
