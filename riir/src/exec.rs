@@ -524,9 +524,26 @@ pub fn exec(
                 let globaladdr = store.instances.resolve(frame.winst_id).addr_of(*global_idx);
                 stack.push_value(store.globals.resolve(globaladdr).val);
             }
+            GlobalSet { global_idx } => {
+                let val = stack.pop_value();
+                let frame = stack.current_frame();
+                let globaladdr = store.instances.resolve(frame.winst_id).addr_of(*global_idx);
+                store.globals.resolve_mut(globaladdr).val = val;
+            }
             LocalGet { local_idx } => {
                 let frame = stack.current_frame();
                 let val = frame.locals[local_idx.0 as usize];
+                stack.push_value(val);
+            }
+            LocalSet { local_idx } => {
+                let val = stack.pop_value();
+                let frame = stack.current_frame_mut();
+                frame.locals[local_idx.0 as usize] = val;
+            }
+            LocalTee { local_idx } => {
+                let val = stack.pop_value();
+                let frame = stack.current_frame_mut();
+                frame.locals[local_idx.0 as usize] = val;
                 stack.push_value(val);
             }
             Call { func_idx } => {

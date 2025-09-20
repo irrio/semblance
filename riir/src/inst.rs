@@ -73,8 +73,12 @@ impl<'wmod> WasmStack<'wmod> {
         self.call_stack.pop().expect("call stack underflow")
     }
 
-    pub fn current_frame(&mut self) -> &WasmFrame {
+    pub fn current_frame(&self) -> &WasmFrame {
         self.call_stack.last().expect("no call frame")
+    }
+
+    pub fn current_frame_mut(&mut self) -> &mut WasmFrame {
+        self.call_stack.last_mut().expect("no call frame")
     }
 }
 
