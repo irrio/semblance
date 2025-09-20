@@ -192,9 +192,10 @@ impl<'wmod> WasmStore<'wmod> {
     pub fn invoke(
         &mut self,
         funcaddr: WasmFuncAddr,
-        args: Box<[WasmValue]>,
+        mut args: Box<[WasmValue]>,
     ) -> Result<DynamicWasmResult<'wmod>, WasmTrap> {
         let func = self.funcs.resolve(funcaddr);
+        args.reverse();
         match func.impl_ {
             WasmFuncImpl::Wasm { winst_id, func } => {
                 let mut stack = WasmStack::new();
