@@ -188,4 +188,21 @@ impl<T: Addressable> StoreTable<T> {
     pub fn resolve_mut(&mut self, addr: T::Addr) -> &mut T {
         &mut self.items[addr.to_idx()]
     }
+
+    pub fn resolve_multi_mut(&mut self, addr1: T::Addr, addr2: T::Addr) -> (&mut T, &mut T) {
+        let idx1 = addr1.to_idx();
+        let idx2 = addr2.to_idx();
+        assert!(idx1 != idx2);
+        let mid = (idx1 + idx2) / 2;
+        let (low, high) = self.items.split_at_mut(mid);
+        if idx1 > idx2 {
+            let ref1 = &mut high[idx1 - mid];
+            let ref2 = &mut low[idx2];
+            (ref1, ref2)
+        } else {
+            let ref1 = &mut low[idx1];
+            let ref2 = &mut high[idx2 - mid];
+            (ref1, ref2)
+        }
+    }
 }

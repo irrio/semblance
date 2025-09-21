@@ -486,10 +486,97 @@ pub fn exec(
                 let b = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64.copysign(b.num.f64) });
             }
+            TableGet { table_idx } => {
+                let i = stack.pop_value();
+                let frame = stack.current_frame();
+                let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
+                let table = store.tables.resolve(tableaddr);
+                stack.push_value(table.elems[unsafe { i.num.i32 } as usize]);
+            }
+            TableSet { table_idx } => {
+                let val = stack.pop_value();
+                let i = stack.pop_value();
+                let frame = stack.current_frame();
+                let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
+                let table = store.tables.resolve_mut(tableaddr);
+                table.elems[unsafe { i.num.i32 } as usize] = unsafe { val.ref_ };
+            }
+            TableSize { table_idx } => {
+                let frame = stack.current_frame();
+                let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
+                let table = store.tables.resolve(tableaddr);
+                stack.push_value(table.elems.len() as i32);
+            }
+            TableGrow { table_idx } => {
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let val = unsafe { stack.pop_value().ref_ };
+                let frame = stack.current_frame();
+                let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
+                let table = store.tables.resolve_mut(tableaddr);
+                let sz = table.elems.len();
+                if let Some(max) = table.type_.limits.max {
+                    if sz + n > (max as usize) {
+                        stack.push_value(-1i32);
+                        continue;
+                    }
+                }
+                table.elems.reserve(n as usize);
+                for _ in 0..n {
+                    table.elems.push(val);
+                }
+                stack.push_value(sz as i32);
+            }
+            TableFill { table_idx } => {
+                let frame = stack.current_frame();
+                let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
+                let table = store.tables.resolve_mut(tableaddr);
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let val = unsafe { stack.pop_value().ref_ };
+                let i = unsafe { stack.pop_value().num.i32 } as usize;
+                if i + n > table.elems.len() {
+                    return Err(WasmTrap {});
+                }
+                if n == 0 {
+                    continue;
+                }
+                for idx in i..n {
+                    table.elems[idx] = val;
+                }
+            }
+            TableCopy { dst, src } => {
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let tableaddr_dst = winst.addr_of(*dst);
+                let tableaddr_src = winst.addr_of(*src);
+                let (table_dst, table_src) =
+                    store.tables.resolve_multi_mut(tableaddr_dst, tableaddr_src);
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                if s + n > table_src.elems.len() {
+                    return Err(WasmTrap {});
+                }
+                if d + n > table_dst.elems.len() {
+                    return Err(WasmTrap {});
+                }
+                if n == 0 {
+                    continue;
+                }
+                (&mut table_dst.elems[d..(d + n)]).copy_from_slice(&table_src.elems[s..(s + n)]);
+            }
             TableInit {
                 table_idx,
                 elem_idx,
-            } => todo!(),
+            } => {
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let table = store.tables.resolve_mut(winst.addr_of(*table_idx));
+                let elem = store.elems.resolve(winst.addr_of(*elem_idx));
+                (&mut table.elems[d..(d + n)]).copy_from_slice(&elem.elem[s..(s + n)]);
+            }
             MemoryInit { data_idx } => {
                 let n = unsafe { stack.pop_value().num.i32 } as usize;
                 let s = unsafe { stack.pop_value().num.i32 } as usize;
