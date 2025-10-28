@@ -9,9 +9,9 @@ pub struct WasmModuleBuilder {
     code: Vec<WasmCode>,
     tables: Vec<WasmTableType>,
     mems: Vec<WasmMemType>,
-    globals: Vec<WasmGlobal>,
-    elems: Vec<WasmElem>,
-    datas: Vec<WasmData>,
+    globals: Vec<WasmGlobal<WasmInstructionRaw>>,
+    elems: Vec<WasmElem<WasmInstructionRaw>>,
+    datas: Vec<WasmData<WasmInstructionRaw>>,
     start: Option<WasmFuncIdx>,
     imports: Vec<WasmImport>,
     exports: Vec<WasmExport>,
@@ -20,7 +20,7 @@ pub struct WasmModuleBuilder {
 
 pub struct WasmCode {
     pub locals: Box<[WasmValueType]>,
-    pub body: WasmExpr,
+    pub body: Box<WasmExprRaw>,
 }
 
 impl WasmModuleBuilder {
@@ -80,7 +80,7 @@ impl WasmModuleBuilder {
         self.globals.reserve_exact(num);
     }
 
-    pub fn push_global(&mut self, global: WasmGlobal) {
+    pub fn push_global(&mut self, global: WasmGlobal<WasmInstructionRaw>) {
         self.globals.push(global);
     }
 
@@ -88,7 +88,7 @@ impl WasmModuleBuilder {
         self.elems.reserve_exact(num);
     }
 
-    pub fn push_elem(&mut self, elem: WasmElem) {
+    pub fn push_elem(&mut self, elem: WasmElem<WasmInstructionRaw>) {
         self.elems.push(elem);
     }
 
@@ -96,7 +96,7 @@ impl WasmModuleBuilder {
         self.datas.reserve_exact(num);
     }
 
-    pub fn push_data(&mut self, data: WasmData) {
+    pub fn push_data(&mut self, data: WasmData<WasmInstructionRaw>) {
         self.datas.push(data);
     }
 
@@ -124,7 +124,7 @@ impl WasmModuleBuilder {
         self.customs.push(custom);
     }
 
-    pub fn build(self) -> UncheckedWasmModule {
+    pub fn build(self) -> WasmModuleRaw {
         let funcs = self
             .funcs
             .into_iter()
@@ -135,7 +135,7 @@ impl WasmModuleBuilder {
                 body: code.body,
             })
             .collect::<Vec<_>>();
-        UncheckedWasmModule(WasmModule {
+        WasmModuleRaw {
             version: self.version,
             types: self.types.into_boxed_slice(),
             funcs: funcs.into_boxed_slice(),
@@ -148,7 +148,7 @@ impl WasmModuleBuilder {
             imports: self.imports.into_boxed_slice(),
             exports: self.exports.into_boxed_slice(),
             customs: self.customs.into_boxed_slice(),
-        })
+        }
     }
 }
 
@@ -156,16 +156,7 @@ impl TryInto<WasmModule> for WasmModuleBuilder {
     type Error = WasmValidationError;
 
     fn try_into(self) -> Result<WasmModule, Self::Error> {
-        self.build().validate()
-    }
-}
-
-pub struct UncheckedWasmModule(WasmModule);
-
-impl UncheckedWasmModule {
-    pub fn validate(self) -> WasmValidationResult<WasmModule> {
-        validate(&self.0)?;
-        Ok(self.0)
+        validate(self.build())
     }
 }
 
@@ -197,25 +188,25 @@ impl Into<WasmResultType> for WasmResultTypeBuilder {
 }
 
 #[derive(Default)]
-pub struct WasmExprBuilder(Vec<WasmInstruction>);
+pub struct WasmExprBuilder(Vec<WasmInstructionRaw>);
 
 impl WasmExprBuilder {
     pub fn new() -> Self {
         WasmExprBuilder::default()
     }
 
-    pub fn push_instr(&mut self, instr: WasmInstruction) -> &WasmInstruction {
+    pub fn push_instr(&mut self, instr: WasmInstructionRaw) -> &WasmInstructionRaw {
         self.0.push(instr);
         self.0.last().unwrap()
     }
 
-    pub fn build(self) -> WasmExpr {
-        WasmExpr(self.0.into_boxed_slice())
+    pub fn build(self) -> Box<WasmExprRaw> {
+        self.0.into_boxed_slice()
     }
 }
 
-impl Into<WasmExpr> for WasmExprBuilder {
-    fn into(self) -> WasmExpr {
+impl Into<Box<WasmExprRaw>> for WasmExprBuilder {
+    fn into(self) -> Box<WasmExprRaw> {
         self.build()
     }
 }

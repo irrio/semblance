@@ -26,13 +26,13 @@ impl WasmValueStack {
     }
 }
 
-pub struct WasmStack<'wmod> {
+pub struct WasmStack {
     value_stack: WasmValueStack,
-    label_stack: Vec<WasmLabel<'wmod>>,
+    label_stack: Vec<WasmLabel>,
     call_stack: Vec<WasmFrame>,
 }
 
-impl<'wmod> WasmStack<'wmod> {
+impl WasmStack {
     pub fn new() -> Self {
         WasmStack {
             value_stack: WasmValueStack::new(),
@@ -57,12 +57,18 @@ impl<'wmod> WasmStack<'wmod> {
         out
     }
 
-    pub fn push_label(&mut self, label: WasmLabel<'wmod>) {
+    pub fn push_label(&mut self, label: WasmLabel) {
         self.label_stack.push(label);
     }
 
-    pub fn pop_label(&mut self) -> WasmLabel<'wmod> {
-        self.label_stack.pop().expect("label stack underflow")
+    pub fn pop_label(&mut self, label_idx: WasmLabelIdx) -> Option<WasmLabel> {
+        let mut n = label_idx.0 + 1;
+        let mut label = None;
+        while n > 0 {
+            label = self.label_stack.pop();
+            n -= 1;
+        }
+        label
     }
 
     pub fn push_frame(&mut self, frame: WasmFrame) {
@@ -88,9 +94,9 @@ pub struct WasmFrame {
     pub winst_id: WasmInstanceAddr,
 }
 
-pub struct WasmLabel<'wmod> {
+pub struct WasmLabel {
     pub arity: u32,
-    pub instr: &'wmod [WasmInstruction],
+    pub instr: WasmInstructionIdx,
 }
 
 pub struct WasmModuleInst<'wmod> {
@@ -211,8 +217,11 @@ impl<'wmod> WasmStore<'wmod> {
                     locals: args,
                     winst_id,
                 });
-                stack.push_label(WasmLabel { arity, instr: &[] });
-                exec(&mut stack, self, &func.body.0)?;
+                stack.push_label(WasmLabel {
+                    arity,
+                    instr: WasmInstructionIdx(func.body.len() as u32 - 1),
+                });
+                exec(&mut stack, self, &func.body)?;
                 let mut out = Vec::with_capacity(ty.output_type.0.len());
                 for _ in 0..ty.output_type.0.len() {
                     out.push(stack.pop_value());
@@ -274,7 +283,7 @@ pub struct WasmFuncInst<'wmod> {
 pub enum WasmFuncImpl<'wmod> {
     Wasm {
         winst_id: WasmInstanceAddr,
-        func: &'wmod WasmFunc,
+        func: &'wmod WasmFunc<WasmInstruction>,
     },
     Host {
         hostfunc: WasmHostFunc,

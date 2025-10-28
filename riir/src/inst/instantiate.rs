@@ -3,7 +3,7 @@ use crate::{
     inst::{WasmRefValue, WasmStack},
     module::{
         WasmData, WasmDataIdx, WasmDataMode, WasmElemIdx, WasmElemMode, WasmExportDesc, WasmExpr,
-        WasmFunc, WasmFuncType, WasmGlobalType, WasmImportDesc, WasmInstruction, WasmLimits,
+        WasmFunc, WasmFuncType, WasmGlobalType, WasmImportDesc, WasmInstructionRepr, WasmLimits,
         WasmMemType, WasmRefType, WasmTableType,
     },
 };
@@ -86,7 +86,7 @@ impl<'wmod> WasmStore<'wmod> {
                     offset_expr,
                 } => {
                     let n = elem.init.len();
-                    use WasmInstruction::*;
+                    use WasmInstructionRepr::*;
                     let expr = [
                         I32Const { val: 0 },
                         I32Const { val: n as i32 },
@@ -99,11 +99,11 @@ impl<'wmod> WasmStore<'wmod> {
                         },
                         ExprEnd,
                     ];
-                    exec(&mut stack, self, &offset_expr.0);
+                    exec(&mut stack, self, &offset_expr);
                     exec(&mut stack, self, &expr);
                 }
                 WasmElemMode::Declarative => {
-                    use WasmInstruction::*;
+                    use WasmInstructionRepr::*;
                     let expr = [
                         ElemDrop {
                             elem_idx: WasmElemIdx(i as u32),
@@ -123,7 +123,7 @@ impl<'wmod> WasmStore<'wmod> {
                     offset_expr,
                 } => {
                     let n = data.bytes.len();
-                    use WasmInstruction::*;
+                    use WasmInstructionRepr::*;
                     let expr = [
                         I32Const { val: 0 },
                         I32Const { val: n as i32 },
@@ -135,7 +135,7 @@ impl<'wmod> WasmStore<'wmod> {
                         },
                         ExprEnd,
                     ];
-                    exec(&mut stack, self, &offset_expr.0);
+                    exec(&mut stack, self, &offset_expr);
                     exec(&mut stack, self, &expr);
                 }
                 _ => continue,
@@ -143,7 +143,7 @@ impl<'wmod> WasmStore<'wmod> {
         }
 
         if let Some(func_idx) = wmod.start {
-            use WasmInstruction::*;
+            use WasmInstructionRepr::*;
             let expr = [Call { func_idx }, ExprEnd];
             exec(&mut stack, self, &expr);
         }
@@ -490,8 +490,8 @@ fn exec_const_expr<'wmod>(
     expr: &WasmExpr,
     out: &mut WasmValue,
 ) {
-    use WasmInstruction::*;
-    for instr in &expr.0 {
+    use WasmInstructionRepr::*;
+    for instr in expr {
         match instr {
             I32Const { val } => *out = (*val).into(),
             I64Const { val } => *out = (*val).into(),

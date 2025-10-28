@@ -18,6 +18,12 @@ pub struct WasmElemAddr(u32);
 #[derive(Debug, Clone, Copy)]
 pub struct WasmDataAddr(u32);
 
+impl WasmFuncAddr {
+    pub fn is_null(self) -> bool {
+        self.0 == 0
+    }
+}
+
 pub trait ToIdx {
     fn to_idx(self) -> usize;
 }

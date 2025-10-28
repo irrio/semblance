@@ -1,16 +1,22 @@
 use crate::{
-    inst::{WasmFrame, WasmFuncImpl, WasmRefValue, WasmStack, WasmStore, WasmTrap},
-    module::{WasmInstruction, WasmMemIdx},
+    inst::{WasmFrame, WasmFuncImpl, WasmLabel, WasmRefValue, WasmStack, WasmStore, WasmTrap},
+    module::{
+        WasmBlockType, WasmExpr, WasmFuncType, WasmInstructionIdx, WasmInstructionRepr,
+        WasmLabelIdx, WasmMemIdx,
+    },
 };
 
-pub fn exec(
+pub fn exec<'wmod>(
     stack: &mut WasmStack,
-    store: &mut WasmStore,
-    expr: &[WasmInstruction],
+    store: &mut WasmStore<'wmod>,
+    expr: &WasmExpr,
 ) -> Result<(), WasmTrap> {
     let mut ic = 0;
     loop {
-        use WasmInstruction::*;
+        if ic >= expr.len() {
+            break;
+        }
+        use WasmInstructionRepr::*;
         match &expr[ic] {
             I32Const { val } => stack.push_value(*val),
             I64Const { val } => stack.push_value(*val),
@@ -21,53 +27,53 @@ pub fn exec(
                 stack.push_value((unsafe { a.num.i32 } == 0) as i32);
             }
             I32Eq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 == b.num.i32 } as i32);
             }
             I32Neq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 != b.num.i32 } as i32);
             }
             I32LtS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 < b.num.i32 } as i32);
             }
             I32LtU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) < (b.num.i32 as u32) } as i32);
             }
             I32GtS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 > b.num.i32 } as i32);
             }
             I32GtU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) > (b.num.i32 as u32) } as i32);
             }
             I32LeS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 <= b.num.i32 } as i32);
             }
             I32LeU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) <= (b.num.i32 as u32) } as i32);
             }
             I32GeS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 >= b.num.i32 } as i32);
             }
             I32GeU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) >= (b.num.i32 as u32) } as i32);
             }
             I32Clz => {
@@ -85,78 +91,81 @@ pub fn exec(
                 stack.push_value(unsafe { a.num.i32 }.count_ones() as i32);
             }
             I32Add => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32.wrapping_add(b.num.i32) });
             }
             I32Sub => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
+                if (unsafe { a.num.i32 } <= 0) {
+                    todo!("debug me");
+                }
                 stack.push_value(unsafe { a.num.i32.wrapping_sub(b.num.i32) });
             }
             I32Mul => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32.wrapping_mul(b.num.i32) });
             }
             I32DivS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 / b.num.i32 });
             }
             I32DivU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) / (b.num.i32 as u32) } as i32);
             }
             I32RemS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 % b.num.i32 });
             }
             I32RemU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) % (b.num.i32 as u32) } as i32);
             }
             I32And => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 & b.num.i32 });
             }
             I32Or => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 | b.num.i32 });
             }
             I32Xor => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 ^ b.num.i32 });
             }
             I32Shl => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 << b.num.i32 });
             }
             I32ShrS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32 >> b.num.i32 });
             }
             I32ShrU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i32 as u32) >> (b.num.i32 as u32) } as i32);
             }
             I32Rotl => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32.rotate_left(b.num.i32 as u32) });
             }
             I32Rotr => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i32.rotate_right(b.num.i32 as u32) });
             }
             I64EqZ => {
@@ -164,53 +173,53 @@ pub fn exec(
                 stack.push_value(unsafe { a.num.i64 == 0 } as i32);
             }
             I64Eq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 == b.num.i64 } as i32);
             }
             I64Neq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 != b.num.i64 } as i32);
             }
             I64LtS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 < b.num.i64 } as i32);
             }
             I64LtU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) < (b.num.i64 as u64) } as i32);
             }
             I64GtS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 > b.num.i64 } as i32);
             }
             I64GtU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) > (b.num.i64 as u64) } as i32);
             }
             I64LeS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 <= b.num.i64 } as i32);
             }
             I64LeU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) <= (b.num.i64 as u64) } as i32);
             }
             I64GeS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 >= b.num.i64 } as i32);
             }
             I64GeU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) >= (b.num.i64 as u64) } as i32);
             }
             I64Clz => {
@@ -226,108 +235,108 @@ pub fn exec(
                 stack.push_value(unsafe { a.num.i64 }.count_ones() as i64);
             }
             I64Add => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64.wrapping_add(b.num.i64) });
             }
             I64Sub => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64.wrapping_sub(b.num.i64) });
             }
             I64Mul => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64.wrapping_mul(b.num.i64) });
             }
             I64DivS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 / b.num.i64 });
             }
             I64DivU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) / (b.num.i64 as u64) } as i64);
             }
             I64RemS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 % b.num.i64 });
             }
             I64RemU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) % (b.num.i64 as u64) } as i64);
             }
             I64And => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 & b.num.i64 });
             }
             I64Or => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 | b.num.i64 });
             }
             I64Xor => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 ^ b.num.i64 });
             }
             I64Shl => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 << b.num.i64 });
             }
             I64ShrS => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64 >> b.num.i64 });
             }
             I64ShrU => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { (a.num.i64 as u64) >> (b.num.i64 as u64) } as i64);
             }
             I64Rotl => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64.rotate_left(b.num.i64 as u32) });
             }
             I64Rotr => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.i64.rotate_right(b.num.i64 as u32) });
             }
             F32Eq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 == b.num.f32 } as i32);
             }
             F32Neq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 != b.num.f32 } as i32);
             }
             F32Lt => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 < b.num.f32 } as i32);
             }
             F32Gt => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 > b.num.f32 } as i32);
             }
             F32Le => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 <= b.num.f32 } as i32);
             }
             F32Ge => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 >= b.num.f32 } as i32);
             }
             F32Abs => {
@@ -359,68 +368,68 @@ pub fn exec(
                 stack.push_value(unsafe { a.num.f32 }.sqrt());
             }
             F32Add => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 + b.num.f32 });
             }
             F32Sub => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 - b.num.f32 });
             }
             F32Mul => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 * b.num.f32 });
             }
             F32Div => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32 / b.num.f32 });
             }
             F32Min => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32.min(b.num.f32) });
             }
             F32Max => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32.max(b.num.f32) });
             }
             F32CopySign => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f32.copysign(b.num.f32) });
             }
             F64Eq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 == b.num.f64 } as i32);
             }
             F64Neq => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 != b.num.f64 } as i32);
             }
             F64Lt => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 < b.num.f64 } as i32);
             }
             F64Gt => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 > b.num.f64 } as i32);
             }
             F64Le => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 <= b.num.f64 } as i32);
             }
             F64Ge => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 >= b.num.f64 } as i32);
             }
             F64Abs => {
@@ -452,38 +461,38 @@ pub fn exec(
                 stack.push_value(unsafe { a.num.f64 }.sqrt());
             }
             F64Add => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 + b.num.f64 });
             }
             F64Sub => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 - b.num.f64 });
             }
             F64Mul => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 * b.num.f64 });
             }
             F64Div => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64 / b.num.f64 });
             }
             F64Min => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64.min(b.num.f64) });
             }
             F64Max => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64.max(b.num.f64) });
             }
             F64CopySign => {
-                let a = stack.pop_value();
                 let b = stack.pop_value();
+                let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64.copysign(b.num.f64) });
             }
             TableGet { table_idx } => {
@@ -517,6 +526,7 @@ pub fn exec(
                 if let Some(max) = table.type_.limits.max {
                     if sz + n > (max as usize) {
                         stack.push_value(-1i32);
+                        ic += 1;
                         continue;
                     }
                 }
@@ -536,10 +546,7 @@ pub fn exec(
                 if i + n > table.elems.len() {
                     return Err(WasmTrap {});
                 }
-                if n == 0 {
-                    continue;
-                }
-                for idx in i..n {
+                for idx in i..(i + n) {
                     table.elems[idx] = val;
                 }
             }
@@ -559,10 +566,10 @@ pub fn exec(
                 if d + n > table_dst.elems.len() {
                     return Err(WasmTrap {});
                 }
-                if n == 0 {
-                    continue;
+                if n > 0 {
+                    (&mut table_dst.elems[d..(d + n)])
+                        .copy_from_slice(&table_src.elems[s..(s + n)]);
                 }
-                (&mut table_dst.elems[d..(d + n)]).copy_from_slice(&table_src.elems[s..(s + n)]);
             }
             TableInit {
                 table_idx,
@@ -598,14 +605,6 @@ pub fn exec(
                 let dataaddr = store.instances.resolve(frame.winst_id).addr_of(*data_idx);
                 store.datas.resolve_mut(dataaddr).data = None;
             }
-            RefNull { ref_type: _ } => {
-                stack.push_value(WasmRefValue::NULL);
-            }
-            RefFunc { func_idx } => {
-                let frame = stack.current_frame();
-                let funcaddr = store.instances.resolve(frame.winst_id).addr_of(*func_idx);
-                stack.push_value(WasmRefValue { func: funcaddr });
-            }
             GlobalGet { global_idx } => {
                 let frame = stack.current_frame();
                 let globaladdr = store.instances.resolve(frame.winst_id).addr_of(*global_idx);
@@ -633,6 +632,80 @@ pub fn exec(
                 frame.locals[local_idx.0 as usize] = val;
                 stack.push_value(val);
             }
+            Unreachable => return Err(WasmTrap {}),
+            Nop => {}
+            Block { block_type, imm } => {
+                let frame = stack.current_frame();
+                let (_m, n) =
+                    blocktype_arity(block_type, &store.instances.resolve(frame.winst_id).types);
+                stack.push_label(WasmLabel {
+                    arity: n,
+                    instr: *imm, // *end_ic,
+                });
+            }
+            Loop { block_type, imm: _ } => {
+                let frame = stack.current_frame();
+                let (m, _n) =
+                    blocktype_arity(block_type, &store.instances.resolve(frame.winst_id).types);
+                stack.push_label(WasmLabel {
+                    arity: m,
+                    instr: WasmInstructionIdx(ic as u32),
+                });
+            }
+            If { block_type, imm } => {
+                let frame = stack.current_frame();
+                let (_m, n) =
+                    blocktype_arity(block_type, &store.instances.resolve(frame.winst_id).types);
+                let val = stack.pop_value();
+                if (unsafe { val.num.i32 } != 0) {
+                    stack.push_label(WasmLabel {
+                        arity: n,
+                        instr: imm.end_ic,
+                    });
+                } else {
+                    if let Some(else_ic) = imm.else_ic {
+                        ic = else_ic.0 as usize;
+                        stack.push_label(WasmLabel {
+                            arity: n,
+                            instr: imm.end_ic,
+                        });
+                        continue;
+                    } else {
+                        ic = imm.end_ic.0 as usize;
+                        continue;
+                    }
+                }
+            }
+            Else => {
+                let label = stack.pop_label(WasmLabelIdx(0)).expect("label underflow");
+                ic = label.instr.0 as usize;
+                continue;
+            }
+            ExprEnd => {
+                stack.pop_label(WasmLabelIdx(0));
+            }
+            Break { label_idx } => {
+                let label = stack.pop_label(*label_idx).expect("label underflow");
+                ic = label.instr.0 as usize;
+                continue;
+            }
+            BreakIf { label_idx } => {
+                let val = stack.pop_value();
+                if (unsafe { val.num.i32 } != 0) {
+                    let label = stack.pop_label(*label_idx).expect("label underflow");
+                    ic = label.instr.0 as usize;
+                    continue;
+                }
+            }
+            BreakTable {
+                labels,
+                default_label,
+            } => {
+                todo!();
+            }
+            Return => {
+                todo!();
+            }
             Call { func_idx } => {
                 let winst_id = stack.current_frame().winst_id;
                 let funcaddr = store.instances.resolve(winst_id).addr_of(*func_idx);
@@ -658,11 +731,58 @@ pub fn exec(
                     }
                 }
             }
-            Unreachable => return Err(WasmTrap {}),
-            ExprEnd => break,
+            CallIndirect {
+                table_idx,
+                type_idx,
+            } => {
+                todo!();
+            }
+            RefNull { ref_type: _ } => {
+                stack.push_value(WasmRefValue::NULL);
+            }
+            RefIsNull => {
+                let addr = unsafe { stack.pop_value().ref_.func };
+                stack.push_value(addr.is_null() as i32);
+            }
+            RefFunc { func_idx } => {
+                let frame = stack.current_frame();
+                let funcaddr = store.instances.resolve(frame.winst_id).addr_of(*func_idx);
+                stack.push_value(WasmRefValue { func: funcaddr });
+            }
+            Drop => {
+                stack.pop_value();
+            }
+            Select { value_types: _ } => {
+                let c = unsafe { stack.pop_value().num.i32 };
+                let val1 = stack.pop_value();
+                let val2 = stack.pop_value();
+                if c != 0 {
+                    stack.push_value(val1);
+                } else {
+                    stack.push_value(val2);
+                }
+            }
             instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
         ic += 1;
     }
     Ok(())
+}
+
+fn blocktype_arity(blocktype: &WasmBlockType, types: &[WasmFuncType]) -> (u32, u32) {
+    match blocktype {
+        WasmBlockType::InlineType(ty) => {
+            if ty.is_some() {
+                (0, 1)
+            } else {
+                (0, 0)
+            }
+        }
+        WasmBlockType::TypeRef(typeidx) => {
+            let ty = &types[typeidx.0 as usize];
+            let in_arity = ty.input_type.0.len() as u32;
+            let out_arity = ty.output_type.0.len() as u32;
+            (in_arity, out_arity)
+        }
+    }
 }

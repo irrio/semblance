@@ -12,7 +12,7 @@ use std::{
 
 pub use bin::{WasmDecodeError, WasmDecodeResult};
 pub use repr::*;
-pub use valid::{WasmValidationError, WasmValidationResult};
+pub use valid::{WasmValidationError, WasmValidationResult, validate};
 
 #[derive(Debug)]
 pub enum WasmReadError {
@@ -28,6 +28,6 @@ impl repr::WasmModule {
         f.read_to_end(&mut buf).map_err(WasmReadError::Io)?;
         let bytes = buf.into_boxed_slice();
         let wmod = bin::decode(&bytes).map_err(WasmReadError::Decode)?;
-        wmod.validate().map_err(WasmReadError::Validation)
+        validate(wmod).map_err(WasmReadError::Validation)
     }
 }

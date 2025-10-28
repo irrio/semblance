@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use super::*;
 
 #[derive(Debug)]
@@ -35,20 +37,22 @@ pub enum WasmValidationError {
     TooManySelectTypes,
     InvalidReturn,
     InvalidCallIndirect,
+    UnmatchedEnd,
+    UnmatchedElse,
 }
 
 pub type WasmValidationResult<T> = Result<T, WasmValidationError>;
 
 use context::*;
 
-pub fn validate(wmod: &WasmModule) -> WasmValidationResult<()> {
+pub fn validate(wmod: WasmModuleRaw) -> WasmValidationResult<WasmModule> {
     // C'
-    let mut wmod_ctx = ModuleContext::from_module(wmod)?;
+    let mut wmod_ctx = ModuleContext::from_module(&wmod)?;
     for table in &wmod.tables {
-        validate_table(table, &wmod_ctx)?;
+        validate_table(table)?;
     }
     for mem in &wmod.mems {
-        validate_mem(mem, &wmod_ctx)?;
+        validate_mem(mem)?;
     }
     for global in &wmod.globals {
         validate_global(global, &wmod_ctx)?;
@@ -61,9 +65,11 @@ pub fn validate(wmod: &WasmModule) -> WasmValidationResult<()> {
     }
 
     // C
-    wmod_ctx.include_internal_globals(wmod);
+    wmod_ctx.include_internal_globals(&wmod);
+    let mut ctrl_flow_maps = Vec::with_capacity(wmod.funcs.len());
     for func in &wmod.funcs {
-        validate_func(func, &wmod_ctx)?;
+        let ctrl_flow_map = validate_func(func, &wmod_ctx)?;
+        ctrl_flow_maps.push(ctrl_flow_map);
     }
     if let Some(start) = wmod.start {
         validate_start_func(start, &wmod_ctx)?;
@@ -81,10 +87,125 @@ pub fn validate(wmod: &WasmModule) -> WasmValidationResult<()> {
 
     validate_export_names(&wmod)?;
 
-    Ok(())
+    Ok(reencode_module_with_control_flow_maps(wmod, ctrl_flow_maps))
 }
 
-fn validate_export_names(wmod: &WasmModule) -> WasmValidationResult<()> {
+type ControlFlowMap = HashMap<WasmInstructionIdx, WasmInstructionIdx>;
+
+fn reencode_module_with_control_flow_maps(
+    wmod: WasmModuleRaw,
+    maps: Vec<(ControlFlowMap, ControlFlowMap)>,
+) -> WasmModule {
+    WasmModule {
+        version: wmod.version,
+        types: wmod.types,
+        funcs: reencode_funcs_with_control_flow_maps(wmod.funcs, maps),
+        tables: wmod.tables,
+        mems: wmod.mems,
+        globals: wmod
+            .globals
+            .into_iter()
+            .map(|global| WasmGlobal {
+                global_type: global.global_type,
+                init: reencode_const_expr(global.init),
+            })
+            .collect(),
+        elems: wmod
+            .elems
+            .into_iter()
+            .map(|elem| WasmElem {
+                ref_type: elem.ref_type,
+                init: elem.init.into_iter().map(reencode_const_expr).collect(),
+                elem_mode: unsafe { std::mem::transmute(elem.elem_mode) },
+            })
+            .collect(),
+        datas: wmod
+            .datas
+            .into_iter()
+            .map(|data| WasmData {
+                bytes: data.bytes,
+                mode: unsafe { std::mem::transmute(data.mode) },
+            })
+            .collect(),
+        start: wmod.start,
+        imports: wmod.imports,
+        exports: wmod.exports,
+        customs: wmod.customs,
+    }
+}
+
+fn reencode_const_expr(expr: Box<WasmExprRaw>) -> Box<WasmExpr> {
+    expr.into_iter()
+        .map(|instr| unsafe { std::mem::transmute(instr) })
+        .collect()
+}
+
+fn reencode_funcs_with_control_flow_maps(
+    funcs: Box<[WasmFunc<WasmInstructionRaw>]>,
+    maps: Vec<(ControlFlowMap, ControlFlowMap)>,
+) -> Box<[WasmFunc]> {
+    funcs
+        .into_iter()
+        .zip(maps)
+        .map(|(func, (end_map, else_map))| {
+            reencode_func_with_control_flow_map(func, end_map, else_map)
+        })
+        .collect()
+}
+
+fn reencode_func_with_control_flow_map(
+    func: WasmFunc<WasmInstructionRaw>,
+    end_map: ControlFlowMap,
+    else_map: ControlFlowMap,
+) -> WasmFunc {
+    WasmFunc {
+        type_idx: func.type_idx,
+        locals: func.locals,
+        body: reencode_expr_with_control_flow_map(func.body, end_map, else_map),
+    }
+}
+
+fn reencode_expr_with_control_flow_map(
+    expr: Box<WasmExprRaw>,
+    mut end_map: ControlFlowMap,
+    mut else_map: ControlFlowMap,
+) -> Box<WasmExpr> {
+    expr.into_iter()
+        .enumerate()
+        .map(|(i, instr)| {
+            let idx = WasmInstructionIdx(i as u32);
+            reencode_instr_with_control_flow_map(instr, end_map.remove(&idx), else_map.remove(&idx))
+        })
+        .collect()
+}
+
+fn reencode_instr_with_control_flow_map(
+    instr: WasmInstructionRaw,
+    end_ic: Option<WasmInstructionIdx>,
+    else_ic: Option<WasmInstructionIdx>,
+) -> WasmInstruction {
+    use WasmInstructionRepr::*;
+    match instr {
+        If { block_type, imm: _ } => If {
+            block_type,
+            imm: VerifiedIfImmediates {
+                end_ic: end_ic.expect("missing control flow mapping"),
+                else_ic,
+            },
+        },
+        Block { block_type, imm: _ } => Block {
+            block_type,
+            imm: end_ic.expect("missing control flow mapping"),
+        },
+        Loop { block_type, imm: _ } => Loop {
+            block_type,
+            imm: end_ic.expect("missing control flow mapping"),
+        },
+        i @ _ => unsafe { std::mem::transmute(i) },
+    }
+}
+
+fn validate_export_names(wmod: &WasmModuleRaw) -> WasmValidationResult<()> {
     let mut names = std::collections::HashSet::new();
     for export in &wmod.exports {
         if names.contains(&export.name.0) {
@@ -141,11 +262,11 @@ fn validate_import(import: &WasmImport, wmod_ctx: &ModuleContext) -> WasmValidat
             Ok(())
         }
         WasmImportDesc::Table(ref table_type) => {
-            validate_table(table_type, wmod_ctx)?;
+            validate_table(table_type)?;
             Ok(())
         }
         WasmImportDesc::Mem(ref mem_type) => {
-            validate_mem(mem_type, wmod_ctx)?;
+            validate_mem(mem_type)?;
             Ok(())
         }
         WasmImportDesc::Global(ref _global_type) => Ok(()),
@@ -166,13 +287,18 @@ fn validate_start_func(start: WasmFuncIdx, wmod_ctx: &ModuleContext) -> WasmVali
     Ok(())
 }
 
-fn validate_func(func: &WasmFunc, wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
-    let (output_type, mut expr_ctx) = ExprContext::from_func(&wmod_ctx, func)?;
-    validate_expr_with_result_type(&func.body, &output_type, &wmod_ctx, &mut expr_ctx)?;
-    Ok(())
+fn validate_func(
+    func: &WasmFunc<WasmInstructionRaw>,
+    wmod_ctx: &ModuleContext,
+) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
+    let (output_type, expr_ctx) = ExprContext::from_func(&wmod_ctx, func)?;
+    validate_expr_with_result_type(&func.body, &output_type, &wmod_ctx, expr_ctx)
 }
 
-fn validate_data(data: &WasmData, wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
+fn validate_data(
+    data: &WasmData<WasmInstructionRaw>,
+    wmod_ctx: &ModuleContext,
+) -> WasmValidationResult<()> {
     match data.mode {
         WasmDataMode::Active {
             mem_idx,
@@ -184,7 +310,7 @@ fn validate_data(data: &WasmData, wmod_ctx: &ModuleContext) -> WasmValidationRes
 
 fn validate_active_data(
     mem_idx: WasmMemIdx,
-    offset_expr: &WasmExpr,
+    offset_expr: &WasmExprRaw,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<()> {
     let _mem = wmod_ctx
@@ -196,19 +322,22 @@ fn validate_active_data(
         offset_expr,
         &output_type,
         wmod_ctx,
-        &mut ExprContext::with_return_type(WasmValueType::Num(WasmNumType::I32)),
+        ExprContext::with_return_type(WasmValueType::Num(WasmNumType::I32)),
     )?;
     validate_expr_is_const(offset_expr, wmod_ctx)
 }
 
-fn validate_elem(elem: &WasmElem, wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
+fn validate_elem(
+    elem: &WasmElem<WasmInstructionRaw>,
+    wmod_ctx: &ModuleContext,
+) -> WasmValidationResult<()> {
     let output_type = WasmResultType(Box::new([t!(i32)]));
     for expr in &elem.init {
         validate_expr_with_result_type(
             expr,
             &output_type,
             wmod_ctx,
-            &mut ExprContext::with_return_type(WasmValueType::Ref(elem.ref_type)),
+            ExprContext::with_return_type(WasmValueType::Ref(elem.ref_type)),
         )?;
         validate_expr_is_const(expr, wmod_ctx)?;
     }
@@ -224,7 +353,7 @@ fn validate_elem(elem: &WasmElem, wmod_ctx: &ModuleContext) -> WasmValidationRes
 
 fn validate_active_elem(
     table_idx: WasmTableIdx,
-    offset_expr: &WasmExpr,
+    offset_expr: &WasmExprRaw,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<()> {
     let _table = wmod_ctx
@@ -236,23 +365,26 @@ fn validate_active_elem(
         offset_expr,
         &output_type,
         wmod_ctx,
-        &mut ExprContext::with_return_type(t!(i32)),
+        ExprContext::with_return_type(t!(i32)),
     )?;
     validate_expr_is_const(offset_expr, wmod_ctx)
 }
 
-fn validate_global(global: &WasmGlobal, wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
+fn validate_global(
+    global: &WasmGlobal<WasmInstructionRaw>,
+    wmod_ctx: &ModuleContext,
+) -> WasmValidationResult<()> {
     let output_type = WasmResultType(Box::new([global.global_type.val_type]));
-    let mut expr_context = ExprContext::with_return_type(global.global_type.val_type);
-    validate_expr_with_result_type(&global.init, &output_type, wmod_ctx, &mut expr_context)?;
+    let expr_context = ExprContext::with_return_type(global.global_type.val_type);
+    validate_expr_with_result_type(&global.init, &output_type, wmod_ctx, expr_context)?;
     validate_expr_is_const(&global.init, wmod_ctx)
 }
 
-fn validate_mem(mem: &WasmMemType, _wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
+fn validate_mem(mem: &WasmMemType) -> WasmValidationResult<()> {
     validate_limits_within_range(&mem.limits, u16::MAX as u32)
 }
 
-fn validate_table(table: &WasmTableType, _wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
+fn validate_table(table: &WasmTableType) -> WasmValidationResult<()> {
     validate_limits_within_range(&table.limits, u32::MAX - 1)
 }
 
@@ -354,12 +486,13 @@ fn validate_block_type(
 }
 
 fn validate_instr(
-    op: &WasmInstruction,
+    op: &WasmInstructionRaw,
     wmod_ctx: &ModuleContext,
     expr_ctx: &mut ExprContext,
     stack: &mut TypeStack,
+    idx: WasmInstructionIdx,
 ) -> WasmValidationResult<()> {
-    use WasmInstruction::*;
+    use WasmInstructionRepr::*;
     match op {
         // -- t.const -- //
         I32Const { .. } => {
@@ -784,45 +917,41 @@ fn validate_instr(
         // -- control instructions -- //
         Nop => {}
         Unreachable => {}
-        Block { block_type, expr } => {
+        Block { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
-            expr_ctx.labels.insert(0, func_type.output_type.clone());
-            validate_instr_sequence_with_type(&expr.0, &func_type, wmod_ctx, expr_ctx)?;
-            expr_ctx.labels.remove(0);
+            expr_ctx.labels.push(LabelEntry {
+                ty: func_type.output_type.clone(),
+                idx,
+            });
         }
-        Loop { block_type, expr } => {
+        Loop { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
-            expr_ctx.labels.insert(0, func_type.input_type.clone());
-            validate_instr_sequence_with_type(&expr.0, &func_type, wmod_ctx, expr_ctx)?;
-            expr_ctx.labels.remove(0);
+            expr_ctx.labels.push(LabelEntry {
+                ty: func_type.input_type.clone(),
+                idx,
+            });
         }
-        If {
-            block_type,
-            then,
-            else_,
-        } => {
+        If { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
-            expr_ctx.labels.insert(0, func_type.output_type.clone());
-            validate_instr_sequence_with_type(&then.0, &func_type, wmod_ctx, expr_ctx)?;
-            if let Some(else_) = else_ {
-                validate_instr_sequence_with_type(&else_.0, &func_type, wmod_ctx, expr_ctx)?;
-            }
-            expr_ctx.labels.remove(0);
+            expr_ctx.labels.push(LabelEntry {
+                ty: func_type.output_type.clone(),
+                idx,
+            });
         }
         Break { label_idx } => {
-            let result_type = expr_ctx
+            let label_entry = expr_ctx
                 .labels
-                .get(label_idx.0 as usize)
+                .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
-            stack.pop_result_type(&result_type)?;
+            stack.pop_result_type(&label_entry.ty)?;
         }
         BreakIf { label_idx } => {
-            let result_type = expr_ctx
+            let label_entry = expr_ctx
                 .labels
-                .get(label_idx.0 as usize)
+                .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
             stack.pop(t!(i32))?;
-            stack.pop_result_type(&result_type)?;
+            stack.pop_result_type(&label_entry.ty)?;
         }
         BreakTable {
             labels: _,
@@ -863,38 +992,55 @@ fn validate_instr(
             stack.pop_result_type(&func_type.input_type)?;
             stack.push_result_type(&func_type.output_type);
         }
-        Else => {}
-        ExprEnd => {}
+        Else => {
+            let label_entry = expr_ctx
+                .labels
+                .peek(WasmLabelIdx(0))
+                .ok_or(WasmValidationError::UnmatchedElse)?;
+            expr_ctx.else_control_flow_map.insert(label_entry.idx, idx);
+        }
+        ExprEnd => {
+            let label_entry = expr_ctx
+                .labels
+                .pop()
+                .ok_or(WasmValidationError::UnmatchedEnd)?;
+            expr_ctx.end_control_flow_map.insert(label_entry.idx, idx);
+        }
     }
     Ok(())
 }
 
 fn validate_instr_sequence_with_type(
-    instrs: &[WasmInstruction],
+    instrs: &WasmExprRaw,
     func_type: &WasmFuncType,
     wmod_ctx: &ModuleContext,
-    expr_ctx: &mut ExprContext,
-) -> WasmValidationResult<()> {
+    mut expr_ctx: ExprContext,
+) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
     let mut stack = TypeStack::from_input_type(&func_type.input_type);
-    for op in instrs {
-        validate_instr(op, wmod_ctx, expr_ctx, &mut stack)?;
+    for (i, op) in instrs.iter().enumerate() {
+        validate_instr(
+            op,
+            wmod_ctx,
+            &mut expr_ctx,
+            &mut stack,
+            WasmInstructionIdx(i as u32),
+        )?;
     }
     stack.pop_result_type(&func_type.output_type)?;
-    Ok(())
+    Ok(expr_ctx.consume_control_flow_maps())
 }
 
 fn validate_expr_with_result_type(
-    expr: &WasmExpr,
+    expr: &WasmExprRaw,
     result_type: &WasmResultType,
     wmod_ctx: &ModuleContext,
-    expr_ctx: &mut ExprContext,
-) -> WasmValidationResult<()> {
+    expr_ctx: ExprContext,
+) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
     let func_type = WasmFuncType {
         input_type: WasmResultType(Box::new([])),
         output_type: result_type.clone(),
     };
-    validate_instr_sequence_with_type(&expr.0, &func_type, wmod_ctx, expr_ctx)?;
-    Ok(())
+    validate_instr_sequence_with_type(expr, &func_type, wmod_ctx, expr_ctx)
 }
 
 fn validate_global_is_const(
@@ -912,9 +1058,12 @@ fn validate_global_is_const(
     }
 }
 
-fn validate_expr_is_const(expr: &WasmExpr, wmod_ctx: &ModuleContext) -> WasmValidationResult<()> {
-    for instr in &expr.0 {
-        use WasmInstruction::*;
+fn validate_expr_is_const(
+    expr: &WasmExprRaw,
+    wmod_ctx: &ModuleContext,
+) -> WasmValidationResult<()> {
+    for instr in expr {
+        use WasmInstructionRepr::*;
         match instr {
             I32Const { val: _ } => Ok(()),
             I64Const { val: _ } => Ok(()),
@@ -947,18 +1096,55 @@ mod context {
         pub refs: HashSet<WasmFuncIdx>,
     }
 
+    pub struct LabelEntry {
+        pub ty: WasmResultType,
+        pub idx: WasmInstructionIdx,
+    }
+
+    pub struct LabelStack(Vec<LabelEntry>);
+
+    impl LabelStack {
+        pub fn new() -> Self {
+            LabelStack(Vec::new())
+        }
+
+        pub fn with_result_type(ty: WasmResultType) -> Self {
+            LabelStack(vec![LabelEntry {
+                ty,
+                idx: WasmInstructionIdx(0),
+            }])
+        }
+
+        pub fn push(&mut self, entry: LabelEntry) {
+            self.0.push(entry);
+        }
+
+        pub fn pop(&mut self) -> Option<LabelEntry> {
+            self.0.pop()
+        }
+
+        pub fn peek(&mut self, label_idx: WasmLabelIdx) -> Option<&LabelEntry> {
+            let idx = (self.0.len() - 1) - label_idx.0 as usize;
+            self.0.get(idx)
+        }
+    }
+
     pub struct ExprContext {
         pub locals: Vec<WasmValueType>,
-        pub labels: Vec<WasmResultType>,
+        pub labels: LabelStack,
         pub ret: Option<WasmResultType>,
+        pub end_control_flow_map: ControlFlowMap,
+        pub else_control_flow_map: ControlFlowMap,
     }
 
     impl Default for ExprContext {
         fn default() -> Self {
             ExprContext {
                 locals: vec![],
-                labels: vec![],
+                labels: LabelStack::new(),
                 ret: None,
+                end_control_flow_map: HashMap::new(),
+                else_control_flow_map: HashMap::new(),
             }
         }
     }
@@ -966,7 +1152,7 @@ mod context {
     impl ExprContext {
         pub fn from_func<'wmod>(
             wmod_ctx: &ModuleContext<'wmod>,
-            wfunc: &'wmod WasmFunc,
+            wfunc: &'wmod WasmFunc<WasmInstructionRaw>,
         ) -> WasmValidationResult<(WasmResultType, Self)> {
             let func_type = wmod_ctx
                 .types
@@ -979,8 +1165,10 @@ mod context {
                 func_type.output_type.clone(),
                 ExprContext {
                     locals,
-                    labels: vec![func_type.output_type.clone()],
+                    labels: LabelStack::with_result_type(func_type.output_type.clone()),
                     ret: Some(func_type.output_type.clone()),
+                    end_control_flow_map: HashMap::new(),
+                    else_control_flow_map: HashMap::new(),
                 },
             ))
         }
@@ -989,14 +1177,20 @@ mod context {
             let return_type = WasmResultType(vec![val_type].into_boxed_slice());
             ExprContext {
                 locals: vec![],
-                labels: vec![return_type.clone()],
+                labels: LabelStack::with_result_type(return_type.clone()),
                 ret: Some(return_type),
+                end_control_flow_map: HashMap::new(),
+                else_control_flow_map: HashMap::new(),
             }
+        }
+
+        pub fn consume_control_flow_maps(self) -> (ControlFlowMap, ControlFlowMap) {
+            (self.end_control_flow_map, self.else_control_flow_map)
         }
     }
 
     impl<'wmod> ModuleContext<'wmod> {
-        pub fn from_module(wmod: &'wmod WasmModule) -> WasmValidationResult<Self> {
+        pub fn from_module(wmod: &'wmod WasmModuleRaw) -> WasmValidationResult<Self> {
             Ok(ModuleContext {
                 types: context_types(wmod),
                 funcs: context_funcs(wmod),
@@ -1009,17 +1203,17 @@ mod context {
             })
         }
 
-        pub fn include_internal_globals(&mut self, wmod: &'wmod WasmModule) {
+        pub fn include_internal_globals(&mut self, wmod: &'wmod WasmModuleRaw) {
             self.globals
                 .extend(wmod.globals.iter().map(|g| &g.global_type))
         }
     }
 
-    fn context_types(wmod: &WasmModule) -> &[WasmFuncType] {
+    fn context_types(wmod: &WasmModuleRaw) -> &[WasmFuncType] {
         wmod.types.as_ref()
     }
 
-    fn context_funcs(wmod: &WasmModule) -> Vec<&WasmFuncType> {
+    fn context_funcs(wmod: &WasmModuleRaw) -> Vec<&WasmFuncType> {
         let mut funcs = Vec::new();
         funcs.extend(wmod.imports.iter().filter_map(|i| match i.desc {
             WasmImportDesc::Func(ref f) => {
@@ -1035,7 +1229,7 @@ mod context {
         funcs
     }
 
-    fn context_tables(wmod: &WasmModule) -> Vec<&WasmTableType> {
+    fn context_tables(wmod: &WasmModuleRaw) -> Vec<&WasmTableType> {
         let mut tables = Vec::new();
         tables.extend(wmod.imports.iter().filter_map(|i| match i.desc {
             WasmImportDesc::Table(ref t) => Some(t),
@@ -1045,7 +1239,7 @@ mod context {
         tables
     }
 
-    fn context_mems(wmod: &WasmModule) -> Vec<&WasmMemType> {
+    fn context_mems(wmod: &WasmModuleRaw) -> Vec<&WasmMemType> {
         let mut mems = Vec::new();
         mems.extend(wmod.imports.iter().filter_map(|i| match i.desc {
             WasmImportDesc::Mem(ref m) => Some(m),
@@ -1055,7 +1249,7 @@ mod context {
         mems
     }
 
-    fn context_globals(wmod: &WasmModule) -> Vec<&WasmGlobalType> {
+    fn context_globals(wmod: &WasmModuleRaw) -> Vec<&WasmGlobalType> {
         let mut globals = Vec::new();
         globals.extend(wmod.imports.iter().filter_map(|i| match i.desc {
             WasmImportDesc::Global(ref g) => Some(g),
@@ -1064,15 +1258,15 @@ mod context {
         globals
     }
 
-    fn context_elems(wmod: &WasmModule) -> Vec<WasmRefType> {
+    fn context_elems(wmod: &WasmModuleRaw) -> Vec<WasmRefType> {
         wmod.elems.iter().map(|e| e.ref_type).collect()
     }
 
-    fn context_datas(wmod: &WasmModule) -> usize {
+    fn context_datas(wmod: &WasmModuleRaw) -> usize {
         wmod.datas.len()
     }
 
-    fn context_refs(wmod: &WasmModule) -> HashSet<WasmFuncIdx> {
+    fn context_refs(wmod: &WasmModuleRaw) -> HashSet<WasmFuncIdx> {
         let mut refs = HashSet::new();
         for data in &wmod.datas {
             if let WasmDataMode::Active {
@@ -1101,9 +1295,9 @@ mod context {
         refs
     }
 
-    fn add_const_expr_refs(expr: &WasmExpr, refs: &mut HashSet<WasmFuncIdx>) {
-        for op in &expr.0 {
-            if let WasmInstruction::RefFunc { func_idx } = op {
+    fn add_const_expr_refs(expr: &WasmExprRaw, refs: &mut HashSet<WasmFuncIdx>) {
+        for op in expr {
+            if let WasmInstructionRepr::RefFunc { func_idx } = op {
                 refs.insert(*func_idx);
             }
         }

@@ -1,13 +1,16 @@
+pub type WasmModule = WasmModuleRepr<WasmInstruction>;
+pub type WasmModuleRaw = WasmModuleRepr<WasmInstructionRaw>;
+
 #[derive(Debug)]
-pub struct WasmModule {
+pub struct WasmModuleRepr<TWasmInstruction> {
     pub version: u32,
     pub types: Box<[WasmFuncType]>,
-    pub funcs: Box<[WasmFunc]>,
+    pub funcs: Box<[WasmFunc<TWasmInstruction>]>,
     pub tables: Box<[WasmTableType]>,
     pub mems: Box<[WasmMemType]>,
-    pub globals: Box<[WasmGlobal]>,
-    pub elems: Box<[WasmElem]>,
-    pub datas: Box<[WasmData]>,
+    pub globals: Box<[WasmGlobal<TWasmInstruction>]>,
+    pub elems: Box<[WasmElem<TWasmInstruction>]>,
+    pub datas: Box<[WasmData<TWasmInstruction>]>,
     pub start: Option<WasmFuncIdx>,
     pub imports: Box<[WasmImport]>,
     pub exports: Box<[WasmExport]>,
@@ -108,22 +111,59 @@ pub struct WasmMemArg {
     pub align: u32,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct WasmInstructionIdx(pub u32);
+
+pub trait Immediates: std::fmt::Debug {
+    type BlockImmediates: std::fmt::Debug;
+    type LoopImmediates: std::fmt::Debug;
+    type IfImmediates: std::fmt::Debug;
+}
+
 #[derive(Debug)]
-pub enum WasmInstruction {
+pub struct NoImmediates;
+
+impl Immediates for NoImmediates {
+    type BlockImmediates = ();
+    type LoopImmediates = ();
+    type IfImmediates = ();
+}
+
+#[derive(Debug)]
+pub struct VerifiedImmediates;
+
+#[derive(Debug)]
+pub struct VerifiedIfImmediates {
+    pub end_ic: WasmInstructionIdx,
+    pub else_ic: Option<WasmInstructionIdx>,
+}
+
+impl Immediates for VerifiedImmediates {
+    type BlockImmediates = WasmInstructionIdx;
+    type LoopImmediates = WasmInstructionIdx;
+    type IfImmediates = VerifiedIfImmediates;
+}
+
+pub type WasmInstruction = WasmInstructionRepr<VerifiedImmediates>;
+pub type WasmInstructionRaw = WasmInstructionRepr<NoImmediates>;
+pub type WasmExpr = [WasmInstruction];
+pub type WasmExprRaw = [WasmInstructionRaw];
+
+#[derive(Debug)]
+pub enum WasmInstructionRepr<I: Immediates> {
     Unreachable,
     Nop,
     Block {
         block_type: WasmBlockType,
-        expr: WasmExpr,
+        imm: I::BlockImmediates,
     },
     Loop {
         block_type: WasmBlockType,
-        expr: WasmExpr,
+        imm: I::LoopImmediates,
     },
     If {
         block_type: WasmBlockType,
-        then: WasmExpr,
-        else_: Option<WasmExpr>,
+        imm: I::IfImmediates,
     },
     Else,
     Break {
@@ -439,13 +479,10 @@ pub enum WasmInstruction {
 }
 
 #[derive(Debug)]
-pub struct WasmExpr(pub Box<[WasmInstruction]>);
-
-#[derive(Debug)]
-pub struct WasmFunc {
+pub struct WasmFunc<TWasmInstruction = WasmInstruction> {
     pub type_idx: WasmTypeIdx,
     pub locals: Box<[WasmValueType]>,
-    pub body: WasmExpr,
+    pub body: Box<[TWasmInstruction]>,
 }
 
 #[derive(Debug)]
@@ -478,41 +515,41 @@ pub struct WasmGlobalType {
 }
 
 #[derive(Debug)]
-pub struct WasmGlobal {
+pub struct WasmGlobal<TWasmInstruction = WasmInstruction> {
     pub global_type: WasmGlobalType,
-    pub init: WasmExpr,
+    pub init: Box<[TWasmInstruction]>,
 }
 
 #[derive(Debug)]
-pub enum WasmElemMode {
+pub enum WasmElemMode<TWasmInstruction = WasmInstruction> {
     Passive,
     Active {
         table_idx: WasmTableIdx,
-        offset_expr: WasmExpr,
+        offset_expr: Box<[TWasmInstruction]>,
     },
     Declarative,
 }
 
 #[derive(Debug)]
-pub struct WasmElem {
+pub struct WasmElem<TWasmInstruction = WasmInstruction> {
     pub ref_type: WasmRefType,
-    pub init: Box<[WasmExpr]>,
-    pub elem_mode: WasmElemMode,
+    pub init: Box<[Box<[TWasmInstruction]>]>,
+    pub elem_mode: WasmElemMode<TWasmInstruction>,
 }
 
 #[derive(Debug)]
-pub enum WasmDataMode {
+pub enum WasmDataMode<TWasmInstruction = WasmInstruction> {
     Passive,
     Active {
         mem_idx: WasmMemIdx,
-        offset_expr: WasmExpr,
+        offset_expr: Box<[TWasmInstruction]>,
     },
 }
 
 #[derive(Debug)]
-pub struct WasmData {
+pub struct WasmData<TWasmInstruction = WasmInstruction> {
     pub bytes: Box<[u8]>,
-    pub mode: WasmDataMode,
+    pub mode: WasmDataMode<TWasmInstruction>,
 }
 
 #[derive(Debug)]
