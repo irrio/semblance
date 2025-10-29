@@ -577,6 +577,7 @@ fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstructionRaw>> {
                 bytes,
             ))
         }
+        0x05 => Ok((Else, bytes)),
         0x0B => Ok((ExprEnd, bytes)),
         0x0C => {
             let (label_idx, bytes) = decode_label_idx(bytes)?;

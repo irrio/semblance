@@ -669,7 +669,6 @@ pub fn exec<'wmod>(
                             arity: n,
                             instr: imm.end_ic,
                         });
-                        continue;
                     } else {
                         ic = imm.end_ic.0 as usize;
                         continue;
