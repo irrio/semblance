@@ -174,13 +174,19 @@ fn reencode_expr_with_control_flow_map(
         .enumerate()
         .map(|(i, instr)| {
             let idx = WasmInstructionIdx(i as u32);
-            reencode_instr_with_control_flow_map(instr, end_map.remove(&idx), else_map.remove(&idx))
+            reencode_instr_with_control_flow_map(
+                instr,
+                idx,
+                end_map.remove(&idx),
+                else_map.remove(&idx),
+            )
         })
         .collect()
 }
 
 fn reencode_instr_with_control_flow_map(
     instr: WasmInstructionRaw,
+    ic: WasmInstructionIdx,
     end_ic: Option<WasmInstructionIdx>,
     else_ic: Option<WasmInstructionIdx>,
 ) -> WasmInstruction {
@@ -189,20 +195,31 @@ fn reencode_instr_with_control_flow_map(
         If { block_type, imm: _ } => If {
             block_type,
             imm: VerifiedIfImmediates {
-                end_ic: end_ic.expect("missing control flow mapping"),
-                else_ic,
+                end_off: calculate_relative_jump_offset(
+                    ic,
+                    end_ic.expect("missing control flow mapping"),
+                ),
+                else_off: else_ic.map(|else_ic| calculate_relative_jump_offset(ic, else_ic)),
             },
         },
         Block { block_type, imm: _ } => Block {
             block_type,
-            imm: end_ic.expect("missing control flow mapping"),
+            imm: calculate_relative_jump_offset(ic, end_ic.expect("missing control flow mapping")),
         },
         Loop { block_type, imm: _ } => Loop {
             block_type,
-            imm: end_ic.expect("missing control flow mapping"),
+            imm: calculate_relative_jump_offset(ic, end_ic.expect("missing control flow mapping")),
         },
         i @ _ => unsafe { std::mem::transmute(i) },
     }
+}
+
+fn calculate_relative_jump_offset(
+    src: WasmInstructionIdx,
+    dst: WasmInstructionIdx,
+) -> WasmRelativeJumpOffset {
+    debug_assert!(src.0 < dst.0);
+    WasmRelativeJumpOffset(dst.0 - src.0)
 }
 
 fn validate_export_names(wmod: &WasmModuleRaw) -> WasmValidationResult<()> {

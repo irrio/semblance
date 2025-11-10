@@ -59,6 +59,19 @@ fn count_externvals(externvals: &[WasmExternVal]) -> ExternValCounts {
     counts
 }
 
+fn exec_with_auxiliary_frame(
+    winst_id: WasmInstanceAddr,
+    stack: &mut WasmStack,
+    store: &mut WasmStore,
+    expr: &WasmExpr,
+) {
+    stack.push_frame(WasmFrame {
+        locals: Box::new([]),
+        winst_id,
+    });
+    exec(stack, store, expr).expect("constexpr trapped")
+}
+
 impl<'wmod> WasmStore<'wmod> {
     pub fn instantiate(
         &mut self,
@@ -71,13 +84,7 @@ impl<'wmod> WasmStore<'wmod> {
         let refinit = eval_element_segment_initializers(self, &winst_init, wmod);
 
         let winst_id = self.alloc_module(wmod, externvals, globalinit, refinit);
-
         let mut stack = WasmStack::new();
-        stack.push_frame(WasmFrame {
-            arity: 0,
-            locals: Box::new([]),
-            winst_id,
-        });
 
         for (i, elem) in wmod.elems.iter().enumerate() {
             match &elem.elem_mode {
@@ -99,8 +106,8 @@ impl<'wmod> WasmStore<'wmod> {
                         },
                         ExprEnd,
                     ];
-                    exec(&mut stack, self, &offset_expr);
-                    exec(&mut stack, self, &expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &offset_expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
                 }
                 WasmElemMode::Declarative => {
                     use WasmInstructionRepr::*;
@@ -110,7 +117,7 @@ impl<'wmod> WasmStore<'wmod> {
                         },
                         ExprEnd,
                     ];
-                    exec(&mut stack, self, &expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
                 }
                 _ => continue,
             }
@@ -135,8 +142,8 @@ impl<'wmod> WasmStore<'wmod> {
                         },
                         ExprEnd,
                     ];
-                    exec(&mut stack, self, &offset_expr);
-                    exec(&mut stack, self, &expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &offset_expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
                 }
                 _ => continue,
             }
@@ -145,10 +152,8 @@ impl<'wmod> WasmStore<'wmod> {
         if let Some(func_idx) = wmod.start {
             use WasmInstructionRepr::*;
             let expr = [Call { func_idx }, ExprEnd];
-            exec(&mut stack, self, &expr);
+            exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
         }
-
-        stack.pop_frame();
 
         Ok(winst_id)
     }

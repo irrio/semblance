@@ -114,6 +114,9 @@ pub struct WasmMemArg {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct WasmInstructionIdx(pub u32);
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct WasmRelativeJumpOffset(pub u32);
+
 pub trait Immediates: std::fmt::Debug {
     type BlockImmediates: std::fmt::Debug;
     type LoopImmediates: std::fmt::Debug;
@@ -134,13 +137,13 @@ pub struct VerifiedImmediates;
 
 #[derive(Debug)]
 pub struct VerifiedIfImmediates {
-    pub end_ic: WasmInstructionIdx,
-    pub else_ic: Option<WasmInstructionIdx>,
+    pub end_off: WasmRelativeJumpOffset,
+    pub else_off: Option<WasmRelativeJumpOffset>,
 }
 
 impl Immediates for VerifiedImmediates {
-    type BlockImmediates = WasmInstructionIdx;
-    type LoopImmediates = WasmInstructionIdx;
+    type BlockImmediates = WasmRelativeJumpOffset;
+    type LoopImmediates = WasmRelativeJumpOffset;
     type IfImmediates = VerifiedIfImmediates;
 }
 

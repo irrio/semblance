@@ -1,9 +1,9 @@
 use crate::{
-    inst::{WasmFrame, WasmFuncImpl, WasmLabel, WasmRefValue, WasmStack, WasmStore, WasmTrap},
-    module::{
-        WasmBlockType, WasmExpr, WasmFuncType, WasmInstructionIdx, WasmInstructionRepr,
-        WasmLabelIdx, WasmMemIdx,
+    inst::{
+        ControlStackEntry, WasmFrame, WasmFuncImpl, WasmLabel, WasmRefValue, WasmStack, WasmStore,
+        WasmTrap, WasmValue,
     },
+    module::{WasmExpr, WasmInstruction, WasmInstructionRepr, WasmLabelIdx, WasmMemIdx},
 };
 
 pub fn exec<'wmod>(
@@ -11,13 +11,10 @@ pub fn exec<'wmod>(
     store: &mut WasmStore<'wmod>,
     expr: &WasmExpr,
 ) -> Result<(), WasmTrap> {
-    let mut ic = 0;
+    let mut ip: *const WasmInstruction = &expr[0];
     loop {
-        if ic >= expr.len() {
-            break;
-        }
         use WasmInstructionRepr::*;
-        match &expr[ic] {
+        match unsafe { &*ip } {
             I32Const { val } => stack.push_value(*val),
             I64Const { val } => stack.push_value(*val),
             F32Const { val } => stack.push_value(*val),
@@ -526,7 +523,7 @@ pub fn exec<'wmod>(
                 if let Some(max) = table.type_.limits.max {
                     if sz + n > (max as usize) {
                         stack.push_value(-1i32);
-                        ic += 1;
+                        ip = unsafe { ip.add(1) };
                         continue;
                     }
                 }
@@ -634,65 +631,61 @@ pub fn exec<'wmod>(
             }
             Unreachable => return Err(WasmTrap {}),
             Nop => {}
-            Block { block_type, imm } => {
-                let frame = stack.current_frame();
-                let (_m, n) =
-                    blocktype_arity(block_type, &store.instances.resolve(frame.winst_id).types);
+            Block { block_type: _, imm } => {
                 stack.push_label(WasmLabel {
-                    arity: n,
-                    instr: *imm, // *end_ic,
+                    instr: unsafe { ip.add(imm.0 as usize) },
                 });
             }
-            Loop { block_type, imm: _ } => {
-                let frame = stack.current_frame();
-                let (m, _n) =
-                    blocktype_arity(block_type, &store.instances.resolve(frame.winst_id).types);
-                stack.push_label(WasmLabel {
-                    arity: m,
-                    instr: WasmInstructionIdx(ic as u32),
-                });
+            Loop {
+                block_type: _,
+                imm: _,
+            } => {
+                stack.push_label(WasmLabel { instr: ip });
             }
-            If { block_type, imm } => {
-                let frame = stack.current_frame();
-                let (_m, n) =
-                    blocktype_arity(block_type, &store.instances.resolve(frame.winst_id).types);
+            If { block_type: _, imm } => {
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
                     stack.push_label(WasmLabel {
-                        arity: n,
-                        instr: imm.end_ic,
+                        instr: unsafe { ip.add(imm.end_off.0 as usize) },
                     });
                 } else {
-                    if let Some(else_ic) = imm.else_ic {
-                        ic = else_ic.0 as usize;
+                    if let Some(else_off) = imm.else_off {
+                        ip = unsafe { ip.add(else_off.0 as usize) };
                         stack.push_label(WasmLabel {
-                            arity: n,
-                            instr: imm.end_ic,
+                            instr: unsafe { ip.add(imm.end_off.0 as usize) },
                         });
                     } else {
-                        ic = imm.end_ic.0 as usize;
+                        ip = unsafe { ip.add(imm.end_off.0 as usize) };
                         continue;
                     }
                 }
             }
             Else => {
-                let label = stack.pop_label(WasmLabelIdx(0)).expect("label underflow");
-                ic = label.instr.0 as usize;
-                continue;
+                let label = stack.pop_label(WasmLabelIdx(0));
+                ip = label.instr;
             }
-            ExprEnd => {
-                stack.pop_label(WasmLabelIdx(0));
-            }
+            ExprEnd => match stack.pop_control() {
+                Some(ControlStackEntry::Frame(_frame)) => {
+                    if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
+                        ip = label.instr;
+                        continue;
+                    } else {
+                        break;
+                    }
+                }
+                Some(ControlStackEntry::Label(_label)) => {}
+                None => break,
+            },
             Break { label_idx } => {
-                let label = stack.pop_label(*label_idx).expect("label underflow");
-                ic = label.instr.0 as usize;
+                let label = stack.pop_label(*label_idx);
+                ip = label.instr;
                 continue;
             }
             BreakIf { label_idx } => {
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
-                    let label = stack.pop_label(*label_idx).expect("label underflow");
-                    ic = label.instr.0 as usize;
+                    let label = stack.pop_label(*label_idx);
+                    ip = label.instr;
                     continue;
                 }
             }
@@ -703,7 +696,13 @@ pub fn exec<'wmod>(
                 todo!();
             }
             Return => {
-                todo!();
+                stack.pop_frame();
+                if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
+                    ip = label.instr;
+                    continue;
+                } else {
+                    break;
+                }
             }
             Call { func_idx } => {
                 let winst_id = stack.current_frame().winst_id;
@@ -719,14 +718,21 @@ pub fn exec<'wmod>(
                     }
                     WasmFuncImpl::Wasm {
                         winst_id,
-                        func: _funcimpl,
+                        func: funcimpl,
                     } => {
+                        let mut locals = args;
+                        for local_type in &funcimpl.locals {
+                            locals.push(WasmValue::default_of_type(local_type));
+                        }
+                        stack.push_label(WasmLabel {
+                            instr: unsafe { ip.add(1) },
+                        });
                         stack.push_frame(WasmFrame {
-                            arity: func.type_.output_type.0.len() as u32,
-                            locals: Box::new([]),
+                            locals: locals.into_boxed_slice(),
                             winst_id,
                         });
-                        todo!();
+                        ip = &funcimpl.body[0];
+                        continue;
                     }
                 }
             }
@@ -763,25 +769,7 @@ pub fn exec<'wmod>(
             }
             instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
-        ic += 1;
+        ip = unsafe { ip.add(1) };
     }
     Ok(())
-}
-
-fn blocktype_arity(blocktype: &WasmBlockType, types: &[WasmFuncType]) -> (u32, u32) {
-    match blocktype {
-        WasmBlockType::InlineType(ty) => {
-            if ty.is_some() {
-                (0, 1)
-            } else {
-                (0, 0)
-            }
-        }
-        WasmBlockType::TypeRef(typeidx) => {
-            let ty = &types[typeidx.0 as usize];
-            let in_arity = ty.input_type.0.len() as u32;
-            let out_arity = ty.output_type.0.len() as u32;
-            (in_arity, out_arity)
-        }
-    }
 }

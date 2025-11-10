@@ -26,18 +26,25 @@ impl WasmValueStack {
     }
 }
 
+pub struct WasmLabel {
+    pub instr: *const WasmInstruction,
+}
+
+pub enum ControlStackEntry {
+    Frame(WasmFrame),
+    Label(WasmLabel),
+}
+
 pub struct WasmStack {
     value_stack: WasmValueStack,
-    label_stack: Vec<WasmLabel>,
-    call_stack: Vec<WasmFrame>,
+    control_stack: Vec<ControlStackEntry>,
 }
 
 impl WasmStack {
     pub fn new() -> Self {
         WasmStack {
             value_stack: WasmValueStack::new(),
-            label_stack: Vec::new(),
-            call_stack: Vec::new(),
+            control_stack: Vec::new(),
         }
     }
 
@@ -58,45 +65,61 @@ impl WasmStack {
     }
 
     pub fn push_label(&mut self, label: WasmLabel) {
-        self.label_stack.push(label);
-    }
-
-    pub fn pop_label(&mut self, label_idx: WasmLabelIdx) -> Option<WasmLabel> {
-        let mut n = label_idx.0 + 1;
-        let mut label = None;
-        while n > 0 {
-            label = self.label_stack.pop();
-            n -= 1;
-        }
-        label
+        self.control_stack.push(ControlStackEntry::Label(label));
     }
 
     pub fn push_frame(&mut self, frame: WasmFrame) {
-        self.call_stack.push(frame);
+        self.control_stack.push(ControlStackEntry::Frame(frame));
+    }
+
+    pub fn pop_control(&mut self) -> Option<ControlStackEntry> {
+        self.control_stack.pop()
+    }
+
+    pub fn pop_label(&mut self, label_idx: WasmLabelIdx) -> WasmLabel {
+        let n = label_idx.0 + 1;
+        self.control_stack
+            .truncate(self.control_stack.len() - (n - 1) as usize);
+        if let Some(ControlStackEntry::Label(label)) = self.control_stack.pop() {
+            label
+        } else {
+            panic!("invalid labelidx");
+        }
     }
 
     pub fn pop_frame(&mut self) -> WasmFrame {
-        self.call_stack.pop().expect("call stack underflow")
+        loop {
+            match self.control_stack.pop() {
+                Some(ControlStackEntry::Frame(frame)) => return frame,
+                Some(ControlStackEntry::Label(_)) => continue,
+                None => break,
+            }
+        }
+        panic!("no call frame");
     }
 
     pub fn current_frame(&self) -> &WasmFrame {
-        self.call_stack.last().expect("no call frame")
+        for entry in self.control_stack.iter().rev() {
+            if let ControlStackEntry::Frame(frame) = entry {
+                return frame;
+            }
+        }
+        panic!("no call frame");
     }
 
     pub fn current_frame_mut(&mut self) -> &mut WasmFrame {
-        self.call_stack.last_mut().expect("no call frame")
+        for entry in self.control_stack.iter_mut().rev() {
+            if let ControlStackEntry::Frame(frame) = entry {
+                return frame;
+            }
+        }
+        panic!("no call frame");
     }
 }
 
 pub struct WasmFrame {
-    pub arity: u32,
     pub locals: Box<[WasmValue]>,
     pub winst_id: WasmInstanceAddr,
-}
-
-pub struct WasmLabel {
-    pub arity: u32,
-    pub instr: WasmInstructionIdx,
 }
 
 pub struct WasmModuleInst<'wmod> {
@@ -202,24 +225,21 @@ impl<'wmod> WasmStore<'wmod> {
     pub fn invoke(
         &mut self,
         funcaddr: WasmFuncAddr,
-        mut args: Box<[WasmValue]>,
+        args: Box<[WasmValue]>,
     ) -> Result<DynamicWasmResult<'wmod>, WasmTrap> {
         let func = self.funcs.resolve(funcaddr);
-        args.reverse();
+        let ty = func.type_;
         match func.impl_ {
             WasmFuncImpl::Wasm { winst_id, func } => {
                 let mut stack = WasmStack::new();
+                let mut locals = args.into_vec();
                 // todo: typecheck args
-                let ty = &self.instances.resolve(winst_id).types[func.type_idx.0 as usize];
-                let arity = ty.output_type.0.len() as u32;
+                for local_type in &func.locals {
+                    locals.push(WasmValue::default_of_type(local_type));
+                }
                 stack.push_frame(WasmFrame {
-                    arity,
-                    locals: args,
+                    locals: locals.into_boxed_slice(),
                     winst_id,
-                });
-                stack.push_label(WasmLabel {
-                    arity,
-                    instr: WasmInstructionIdx(func.body.len() as u32 - 1),
                 });
                 exec(&mut stack, self, &func.body)?;
                 let mut out = Vec::with_capacity(ty.output_type.0.len());
@@ -339,6 +359,20 @@ pub union WasmValue {
     pub num: WasmNumValue,
     pub vec: WasmVecValue,
     pub ref_: WasmRefValue,
+}
+
+impl WasmValue {
+    pub fn default_of_type(value_type: &WasmValueType) -> Self {
+        use WasmValueType::*;
+        match value_type {
+            Num(WasmNumType::F32) => 0f32.into(),
+            Num(WasmNumType::F64) => 0f64.into(),
+            Num(WasmNumType::I32) => 0i32.into(),
+            Num(WasmNumType::I64) => 0i64.into(),
+            Ref(_) => WasmRefValue::NULL.into(),
+            Vec(_) => WasmValue { vec: 0 },
+        }
+    }
 }
 
 impl Into<WasmValue> for i32 {
