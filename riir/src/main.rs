@@ -1,6 +1,5 @@
 use std::{
     ffi::{CStr, c_char},
-    io::{Write, stdout},
     num::{ParseFloatError, ParseIntError},
     path::{Path, PathBuf},
 };
@@ -144,6 +143,7 @@ fn read_module_or_exit(path: &Path) -> WasmModule {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum ParseArgError {
     Int(ParseIntError),
     Float(ParseFloatError),
@@ -173,8 +173,8 @@ fn parse_arg_with_type(ty: &WasmValueType, argv: &str) -> Result<WasmValue, Pars
                 },
             },
         },
-        WasmValueType::Vec(vect) => todo!(),
-        WasmValueType::Ref(reft) => todo!(),
+        WasmValueType::Vec(_vect) => todo!(),
+        WasmValueType::Ref(_reft) => todo!(),
     };
     Ok(parsed)
 }
@@ -192,6 +192,7 @@ fn parse_args_for_input_type(
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum LinkError<'wmod> {
     UnknownSymbol(&'wmod str, &'wmod str),
 }

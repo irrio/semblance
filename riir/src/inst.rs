@@ -333,10 +333,10 @@ impl<'wmod> Display for DynamicWasmResult<'wmod> {
                     WasmNumType::F32 => write!(f, "{}", unsafe { val.num.f32 })?,
                     WasmNumType::F64 => write!(f, "{}", unsafe { val.num.f64 })?,
                 },
-                WasmValueType::Vec(vect) => {
+                WasmValueType::Vec(_vect) => {
                     todo!()
                 }
-                WasmValueType::Ref(reft) => {
+                WasmValueType::Ref(_reft) => {
                     todo!()
                 }
             }
@@ -424,7 +424,7 @@ pub union WasmRefValue {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct WasmExternAddr(u32);
+pub struct WasmExternAddr(pub u32);
 
 impl Into<WasmValue> for WasmRefValue {
     fn into(self) -> WasmValue {

@@ -690,10 +690,10 @@ pub fn exec<'wmod>(
                 }
             }
             BreakTable {
-                labels,
-                default_label,
+                labels: _,
+                default_label: _,
             } => {
-                todo!();
+                todo!("break_table");
             }
             Return => {
                 stack.pop_frame();
@@ -737,10 +737,10 @@ pub fn exec<'wmod>(
                 }
             }
             CallIndirect {
-                table_idx,
-                type_idx,
+                table_idx: _,
+                type_idx: _,
             } => {
-                todo!();
+                todo!("call_indirect");
             }
             RefNull { ref_type: _ } => {
                 stack.push_value(WasmRefValue::NULL);
