@@ -6,6 +6,23 @@ use crate::{
     module::{WasmExpr, WasmInstruction, WasmInstructionRepr, WasmLabelIdx, WasmMemIdx},
 };
 
+macro_rules! mem_load {
+    ($t:ty => $t2:ty, $stack:ident, $store:ident, $memarg:ident) => {
+        let frame = $stack.current_frame();
+        let winst = $store.instances.resolve(frame.winst_id);
+        let memaddr = winst.memaddrs[0];
+        let mem = $store.mems.resolve(memaddr);
+        let i = unsafe { $stack.pop_value().num.i32 as u32 };
+        let ea = (i + $memarg.offset) as usize;
+        const N: usize = std::mem::size_of::<$t>();
+        let bytes = mem.data[ea..]
+            .first_chunk::<N>()
+            .expect("out of bounds memory access");
+        let val = <$t>::from_le_bytes(*bytes);
+        $stack.push_value(val as $t2);
+    };
+}
+
 pub fn exec<'wmod>(
     stack: &mut WasmStack,
     store: &mut WasmStore<'wmod>,
@@ -766,6 +783,48 @@ pub fn exec<'wmod>(
                 } else {
                     stack.push_value(val2);
                 }
+            }
+            I32Load { memarg } => {
+                mem_load!(i32 => i32, stack, store, memarg);
+            }
+            I32Load8U { memarg } => {
+                mem_load!(u8 => i32, stack, store, memarg);
+            }
+            I32Load8S { memarg } => {
+                mem_load!(i8 => i32, stack, store, memarg);
+            }
+            I32Load16U { memarg } => {
+                mem_load!(u16 => i32, stack, store, memarg);
+            }
+            I32Load16S { memarg } => {
+                mem_load!(i16 => i32, stack, store, memarg);
+            }
+            I64Load { memarg } => {
+                mem_load!(i64 => i64, stack, store, memarg);
+            }
+            I64Load8U { memarg } => {
+                mem_load!(u8 => i64, stack, store, memarg);
+            }
+            I64Load8S { memarg } => {
+                mem_load!(i8 => i64, stack, store, memarg);
+            }
+            I64Load16U { memarg } => {
+                mem_load!(u16 => i64, stack, store, memarg);
+            }
+            I64Load16S { memarg } => {
+                mem_load!(i16 => i64, stack, store, memarg);
+            }
+            I64Load32U { memarg } => {
+                mem_load!(u32 => i64, stack, store, memarg);
+            }
+            I64Load32S { memarg } => {
+                mem_load!(i32 => i64, stack, store, memarg);
+            }
+            F32Load { memarg } => {
+                mem_load!(f32 => f32, stack, store, memarg);
+            }
+            F64Load { memarg } => {
+                mem_load!(f64 => f64, stack, store, memarg);
             }
             instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
