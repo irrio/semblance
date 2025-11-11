@@ -23,6 +23,20 @@ macro_rules! mem_load {
     };
 }
 
+macro_rules! mem_store {
+    ($t:ident => $t2:ty, $stack:ident, $store:ident, $memarg:ident) => {
+        let frame = $stack.current_frame();
+        let winst = $store.instances.resolve(frame.winst_id);
+        let memaddr = winst.memaddrs[0];
+        let mem = $store.mems.resolve_mut(memaddr);
+        let val = unsafe { $stack.pop_value().num.$t };
+        let i = unsafe { $stack.pop_value().num.i32 as u32 };
+        let ea = (i + $memarg.offset) as usize;
+        const N: usize = std::mem::size_of::<$t2>();
+        (&mut mem.data[ea..(ea + N)]).copy_from_slice(&(val as $t2).to_le_bytes());
+    };
+}
+
 pub fn exec<'wmod>(
     stack: &mut WasmStack,
     store: &mut WasmStore<'wmod>,
@@ -825,6 +839,33 @@ pub fn exec<'wmod>(
             }
             F64Load { memarg } => {
                 mem_load!(f64 => f64, stack, store, memarg);
+            }
+            I32Store { memarg } => {
+                mem_store!(i32 => i32, stack, store, memarg);
+            }
+            I32Store8 { memarg } => {
+                mem_store!(i32 => i8, stack, store, memarg);
+            }
+            I32Store16 { memarg } => {
+                mem_store!(i32 => i16, stack, store, memarg);
+            }
+            I64Store { memarg } => {
+                mem_store!(i64 => i64, stack, store, memarg);
+            }
+            I64Store8 { memarg } => {
+                mem_store!(i64 => i8, stack, store, memarg);
+            }
+            I64Store16 { memarg } => {
+                mem_store!(i64 => i16, stack, store, memarg);
+            }
+            I64Store32 { memarg } => {
+                mem_store!(i64 => i32, stack, store, memarg);
+            }
+            F32Store { memarg } => {
+                mem_store!(f32 => f32, stack, store, memarg);
+            }
+            F64Store { memarg } => {
+                mem_store!(f64 => f64, stack, store, memarg);
             }
             instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
