@@ -348,7 +348,7 @@ fn validate_elem(
     elem: &WasmElem<WasmInstructionRaw>,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<()> {
-    let output_type = WasmResultType(Box::new([t!(i32)]));
+    let output_type = WasmResultType(Box::new([WasmValueType::Ref(elem.ref_type)]));
     for expr in &elem.init {
         validate_expr_with_result_type(
             expr,
@@ -960,7 +960,7 @@ fn validate_instr(
                 .labels
                 .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
-            stack.pop_result_type(&label_entry.ty)?;
+            stack.peek_result_type(&label_entry.ty)?;
         }
         BreakIf { label_idx } => {
             let label_entry = expr_ctx
@@ -968,13 +968,13 @@ fn validate_instr(
                 .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
             stack.pop(t!(i32))?;
-            stack.pop_result_type(&label_entry.ty)?;
+            stack.peek_result_type(&label_entry.ty)?;
         }
         BreakTable {
             labels: _,
             default_label: _,
         } => {
-            todo!();
+            todo!("validate break_table");
         }
         Return => match expr_ctx.ret {
             None => return Err(WasmValidationError::InvalidReturn),
@@ -1233,9 +1233,7 @@ mod context {
     fn context_funcs(wmod: &WasmModuleRaw) -> Vec<&WasmFuncType> {
         let mut funcs = Vec::new();
         funcs.extend(wmod.imports.iter().filter_map(|i| match i.desc {
-            WasmImportDesc::Func(ref f) => {
-                Some(&wmod.types[wmod.funcs[f.0 as usize].type_idx.0 as usize])
-            }
+            WasmImportDesc::Func(ref t) => Some(&wmod.types[t.0 as usize]),
             _ => None,
         }));
         funcs.extend(
@@ -1337,7 +1335,7 @@ impl TypeStack {
     }
 
     pub fn push_result_type(&mut self, result_type: &WasmResultType) {
-        for t in &result_type.0 {
+        for t in result_type.0.iter().rev() {
             self.push(*t);
         }
     }
@@ -1380,8 +1378,21 @@ impl TypeStack {
     }
 
     pub fn pop_result_type(&mut self, result_type: &WasmResultType) -> WasmValidationResult<()> {
-        for t in &result_type.0 {
+        for t in result_type.0.iter().rev() {
             self.pop(*t)?;
+        }
+        Ok(())
+    }
+
+    pub fn peek_result_type(&mut self, result_type: &WasmResultType) -> WasmValidationResult<()> {
+        let top = self.0.iter().rev().take(result_type.0.len());
+        for (actual, expected) in top.zip(result_type.0.iter()) {
+            if *actual != *expected {
+                return Err(WasmValidationError::MismatchedType {
+                    expected: *expected,
+                    actual: Some(*actual),
+                });
+            }
         }
         Ok(())
     }
