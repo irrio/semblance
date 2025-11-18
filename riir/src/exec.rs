@@ -1,7 +1,7 @@
 use crate::{
     inst::{
-        ControlStackEntry, WasmFrame, WasmFuncImpl, WasmLabel, WasmRefValue, WasmStack, WasmStore,
-        WasmTrap, WasmValue,
+        ControlStackEntry, WasmFrame, WasmFuncImpl, WasmLabel, WasmMemInst, WasmRefValue,
+        WasmStack, WasmStore, WasmTrap, WasmValue,
     },
     module::{WasmExpr, WasmInstruction, WasmInstructionRepr, WasmLabelIdx, WasmMemIdx},
 };
@@ -612,17 +612,6 @@ pub fn exec<'wmod>(
                 let elem = store.elems.resolve(winst.addr_of(*elem_idx));
                 (&mut table.elems[d..(d + n)]).copy_from_slice(&elem.elem[s..(s + n)]);
             }
-            MemoryInit { data_idx } => {
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
-                let s = unsafe { stack.pop_value().num.i32 } as usize;
-                let d = unsafe { stack.pop_value().num.i32 } as usize;
-                let frame = stack.current_frame();
-                let winst = store.instances.resolve(frame.winst_id);
-                let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
-                let data = store.datas.resolve(winst.addr_of(*data_idx));
-                let data_bytes = data.data.expect("use of dropped data");
-                (&mut mem.data[d..(d + n)]).copy_from_slice(&data_bytes[s..(s + n)]);
-            }
             ElemDrop { elem_idx } => {
                 let frame = stack.current_frame();
                 let elemaddr = store.instances.resolve(frame.winst_id).addr_of(*elem_idx);
@@ -687,7 +676,6 @@ pub fn exec<'wmod>(
                         });
                     } else {
                         ip = unsafe { ip.add(imm.end_off.0 as usize) };
-                        continue;
                     }
                 }
             }
@@ -866,6 +854,64 @@ pub fn exec<'wmod>(
             }
             F64Store { memarg } => {
                 mem_store!(f64 => f64, stack, store, memarg);
+            }
+            MemoryInit { data_idx } => {
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
+                let data = store.datas.resolve(winst.addr_of(*data_idx));
+                let data_bytes = data.data.expect("use of dropped data");
+                (&mut mem.data[d..(d + n)]).copy_from_slice(&data_bytes[s..(s + n)]);
+            }
+            MemorySize => {
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let mem = store.mems.resolve(winst.addr_of(WasmMemIdx::ZERO));
+                stack.push_value((mem.data.len() / WasmMemInst::PAGE_SIZE) as i32);
+            }
+            MemoryGrow => {
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
+                let n_pages = unsafe { stack.pop_value().num.i32 } as usize;
+                let new_pages = (mem.data.len() / WasmMemInst::PAGE_SIZE) + n_pages;
+                if let Some(max) = mem.type_.limits.max
+                    && new_pages > max as usize
+                {
+                    stack.push_value(-1);
+                } else {
+                    stack.push_value(new_pages as i32);
+                }
+                let n_bytes = n_pages * WasmMemInst::PAGE_SIZE;
+                mem.data.extend(std::iter::repeat_n(0, n_bytes));
+            }
+            MemoryFill => {
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let val = unsafe { stack.pop_value().num.i32 };
+                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                for byte in &mut mem.data[d..(d + n)] {
+                    *byte = val as u8
+                }
+            }
+            MemoryCopy => {
+                let frame = stack.current_frame();
+                let winst = store.instances.resolve(frame.winst_id);
+                let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
+                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                if s.max(d) + n > mem.data.len() {
+                    return Err(WasmTrap {});
+                }
+                unsafe {
+                    std::ptr::copy(&mem.data[s], &mut mem.data[d], n);
+                }
             }
             instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
