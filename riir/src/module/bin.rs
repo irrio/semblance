@@ -33,7 +33,7 @@ pub type WasmDecodeResult<T> = Result<T, WasmDecodeError>;
 
 type Decoded<'b, T> = (T, &'b [u8]);
 
-fn take_bytes<const N: usize>(bytes: &[u8]) -> WasmDecodeResult<Decoded<[u8; N]>> {
+fn take_bytes<const N: usize>(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, [u8; N]>> {
     if bytes.len() < N {
         return Err(WasmDecodeError::UnexpectedEof);
     }
@@ -42,12 +42,12 @@ fn take_bytes<const N: usize>(bytes: &[u8]) -> WasmDecodeResult<Decoded<[u8; N]>
     Ok((buf, &bytes[N..]))
 }
 
-fn take_byte(bytes: &[u8]) -> WasmDecodeResult<Decoded<u8>> {
+fn take_byte(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, u8>> {
     let (buf, bytes) = take_bytes::<1>(bytes)?;
     Ok((buf[0], bytes))
 }
 
-fn take_byte_exact<const B: u8>(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
+fn take_byte_exact<const B: u8>(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, ()>> {
     let (byte, bytes) = take_byte(bytes)?;
     if byte == B {
         Ok(((), bytes))
@@ -59,7 +59,7 @@ fn take_byte_exact<const B: u8>(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
     }
 }
 
-fn take_bytes_dyn(bytes: &[u8], n: usize) -> WasmDecodeResult<Decoded<Vec<u8>>> {
+fn take_bytes_dyn(bytes: &[u8], n: usize) -> WasmDecodeResult<Decoded<'_, Vec<u8>>> {
     if bytes.len() < n {
         return Err(WasmDecodeError::UnexpectedEof);
     }
@@ -68,7 +68,7 @@ fn take_bytes_dyn(bytes: &[u8], n: usize) -> WasmDecodeResult<Decoded<Vec<u8>>> 
     Ok((buf, &bytes[n..]))
 }
 
-fn decode_leb128(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<u32>> {
+fn decode_leb128(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, u32>> {
     let mut result = 0;
     let mut shift = 0;
     loop {
@@ -83,7 +83,7 @@ fn decode_leb128(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<u32>> {
     Ok((result, bytes))
 }
 
-fn decode_leb128_signed(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<i64>> {
+fn decode_leb128_signed(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, i64>> {
     let mut result = 0;
     let mut shift = 0;
 
@@ -121,7 +121,7 @@ enum SectionId {
     DataCount = 12,
 }
 
-fn decode_section_id(bytes: &[u8]) -> WasmDecodeResult<Decoded<SectionId>> {
+fn decode_section_id(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, SectionId>> {
     let (byte, bytes) = take_byte(bytes)?;
     let sid = match byte {
         0 => Ok(SectionId::Custom),
@@ -142,7 +142,7 @@ fn decode_section_id(bytes: &[u8]) -> WasmDecodeResult<Decoded<SectionId>> {
     Ok((sid, bytes))
 }
 
-fn decode_name(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmName>> {
+fn decode_name(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmName>> {
     let (len, bytes) = decode_leb128(bytes)?;
     let (vec, bytes) = take_bytes_dyn(bytes, len as usize)?;
     let str = String::from_utf8(vec).map_err(WasmDecodeError::NonUtfName)?;
@@ -158,7 +158,7 @@ fn decode_custom_section(bytes: &[u8]) -> WasmDecodeResult<WasmCustom> {
     })
 }
 
-fn decode_value_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmValueType>> {
+fn decode_value_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmValueType>> {
     let (tag, bytes) = take_byte(bytes)?;
     let vtype = match tag {
         0x7F => Ok(WasmValueType::Num(WasmNumType::I32)),
@@ -173,7 +173,7 @@ fn decode_value_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmValueType>> {
     Ok((vtype, bytes))
 }
 
-fn decode_result_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmResultType>> {
+fn decode_result_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmResultType>> {
     let mut res = WasmResultTypeBuilder::new();
     let (len, mut bytes) = decode_leb128(bytes)?;
     res.reserve(len as usize);
@@ -185,7 +185,7 @@ fn decode_result_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmResultType>>
     Ok((res.build(), bytes))
 }
 
-fn decode_func_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmFuncType>> {
+fn decode_func_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmFuncType>> {
     let (marker, bytes) = take_byte(bytes)?;
     if marker != 0x60 {
         return Err(WasmDecodeError::InvalidFuncType(marker));
@@ -212,32 +212,32 @@ fn decode_type_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecode
     Ok(())
 }
 
-fn decode_type_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmTypeIdx>> {
+fn decode_type_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmTypeIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmTypeIdx(idx), bytes))
 }
 
-fn decode_func_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmFuncIdx>> {
+fn decode_func_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmFuncIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmFuncIdx(idx), bytes))
 }
 
-fn decode_table_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmTableIdx>> {
+fn decode_table_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmTableIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmTableIdx(idx), bytes))
 }
 
-fn decode_elem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmElemIdx>> {
+fn decode_elem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmElemIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmElemIdx(idx), bytes))
 }
 
-fn decode_mem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmMemIdx>> {
+fn decode_mem_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmMemIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmMemIdx(idx), bytes))
 }
 
-fn decode_mem_idx_zero(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
+fn decode_mem_idx_zero(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, ()>> {
     let (mem_idx, bytes) = decode_mem_idx(bytes)?;
     if mem_idx.0 == 0 {
         Ok(((), bytes))
@@ -246,27 +246,27 @@ fn decode_mem_idx_zero(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
     }
 }
 
-fn decode_data_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmDataIdx>> {
+fn decode_data_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmDataIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmDataIdx(idx), bytes))
 }
 
-fn decode_global_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobalIdx>> {
+fn decode_global_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmGlobalIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmGlobalIdx(idx), bytes))
 }
 
-fn decode_label_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmLabelIdx>> {
+fn decode_label_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmLabelIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmLabelIdx(idx), bytes))
 }
 
-fn decode_local_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmLocalIdx>> {
+fn decode_local_idx(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmLocalIdx>> {
     let (idx, bytes) = decode_leb128(bytes)?;
     Ok((WasmLocalIdx(idx), bytes))
 }
 
-fn decode_ref_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmRefType>> {
+fn decode_ref_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmRefType>> {
     let (tag, bytes) = take_byte(bytes)?;
     match tag {
         0x70 => Ok((WasmRefType::FuncRef, bytes)),
@@ -275,7 +275,7 @@ fn decode_ref_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmRefType>> {
     }
 }
 
-fn decode_limits(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmLimits>> {
+fn decode_limits(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmLimits>> {
     let (flag, bytes) = take_byte(bytes)?;
     match flag {
         0x00 => {
@@ -297,18 +297,18 @@ fn decode_limits(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmLimits>> {
     }
 }
 
-fn decode_table_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmTableType>> {
+fn decode_table_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmTableType>> {
     let (ref_type, bytes) = decode_ref_type(bytes)?;
     let (limits, bytes) = decode_limits(bytes)?;
     Ok((WasmTableType { ref_type, limits }, bytes))
 }
 
-fn decode_mem_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmMemType>> {
+fn decode_mem_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmMemType>> {
     let (limits, bytes) = decode_limits(bytes)?;
     Ok((WasmMemType { limits }, bytes))
 }
 
-fn decode_global_mutability(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobalMutability>> {
+fn decode_global_mutability(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmGlobalMutability>> {
     let (flag, bytes) = take_byte(bytes)?;
     match flag {
         0x00 => Ok((WasmGlobalMutability::Immutable, bytes)),
@@ -317,7 +317,7 @@ fn decode_global_mutability(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobal
     }
 }
 
-fn decode_global_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobalType>> {
+fn decode_global_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmGlobalType>> {
     let (val_type, bytes) = decode_value_type(bytes)?;
     let (mutability, bytes) = decode_global_mutability(bytes)?;
     Ok((
@@ -329,7 +329,7 @@ fn decode_global_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobalType>>
     ))
 }
 
-fn decode_import_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmImportDesc>> {
+fn decode_import_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmImportDesc>> {
     let (tag, bytes) = take_byte(bytes)?;
     match tag {
         0x00 => {
@@ -352,7 +352,7 @@ fn decode_import_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmImportDesc>>
     }
 }
 
-fn decode_import(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmImport>> {
+fn decode_import(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmImport>> {
     let (module_name, bytes) = decode_name(bytes)?;
     let (item_name, bytes) = decode_name(bytes)?;
     let (desc, bytes) = decode_import_desc(bytes)?;
@@ -388,7 +388,7 @@ fn decode_func_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDecode
     Ok(())
 }
 
-fn decode_locals(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmValueType]>>> {
+fn decode_locals(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, Box<[WasmValueType]>>> {
     let (len, mut bytes) = decode_leb128(bytes)?;
     let mut locals = Vec::new();
     for _ in 0..len {
@@ -402,7 +402,7 @@ fn decode_locals(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmValueType]>>
     Ok((locals.into_boxed_slice(), bytes))
 }
 
-fn decode_code(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmCode>> {
+fn decode_code(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmCode>> {
     let (code_size, bytes) = decode_leb128(bytes)?;
     let (bytes, rest) = bytes.split_at(code_size as usize);
     let (locals, bytes) = decode_locals(bytes)?;
@@ -443,7 +443,7 @@ fn decode_memory_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
-fn decode_block_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmBlockType>> {
+fn decode_block_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmBlockType>> {
     if let Ok((_, bytes)) = take_byte_exact::<0x40>(bytes) {
         Ok((WasmBlockType::InlineType(None), bytes))
     } else if let Ok((val_type, bytes)) = decode_value_type(bytes) {
@@ -458,13 +458,13 @@ fn decode_block_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmBlockType>> {
     }
 }
 
-fn decode_memarg(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmMemArg>> {
+fn decode_memarg(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmMemArg>> {
     let (align, bytes) = decode_leb128(bytes)?;
     let (offset, bytes) = decode_leb128(bytes)?;
     Ok((WasmMemArg { align, offset }, bytes))
 }
 
-fn decode_label_indices(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmLabelIdx]>>> {
+fn decode_label_indices(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, Box<[WasmLabelIdx]>>> {
     let (len, mut bytes) = decode_leb128(bytes)?;
     let mut indices = Vec::with_capacity(len as usize);
     for _ in 0..len {
@@ -475,7 +475,7 @@ fn decode_label_indices(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmLabel
     Ok((indices.into_boxed_slice(), bytes))
 }
 
-fn decode_extended_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstructionRaw>> {
+fn decode_extended_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmInstructionRaw>> {
     let (opcode, bytes) = decode_leb128(bytes)?;
     use WasmInstructionRepr::*;
     match opcode {
@@ -541,7 +541,7 @@ fn decode_extended_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstructi
     }
 }
 
-fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmInstructionRaw>> {
+fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmInstructionRaw>> {
     let (opcode, bytes) = take_byte(bytes)?;
     use WasmInstructionRepr::*;
     match opcode {
@@ -926,7 +926,7 @@ fn decode_expr(mut bytes: &[u8]) -> WasmDecodeResult<Box<[WasmInstructionRaw]>> 
     Ok(expr.build())
 }
 
-fn decode_const_expr(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmInstructionRaw]>>> {
+fn decode_const_expr(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, Box<[WasmInstructionRaw]>>> {
     let mut expr = WasmExprBuilder::new();
     loop {
         let (instr, rest) = decode_instr(bytes)?;
@@ -938,7 +938,7 @@ fn decode_const_expr(mut bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[WasmInst
     Ok((expr.build(), bytes))
 }
 
-fn decode_global(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmGlobal<WasmInstructionRaw>>> {
+fn decode_global(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmGlobal<WasmInstructionRaw>>> {
     let (global_type, bytes) = decode_global_type(bytes)?;
     let (expr, bytes) = decode_const_expr(bytes)?;
     Ok((
@@ -961,7 +961,7 @@ fn decode_global_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
-fn decode_export_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExportDesc>> {
+fn decode_export_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmExportDesc>> {
     let (tag, bytes) = take_byte(bytes)?;
     match tag {
         0x00 => {
@@ -984,7 +984,7 @@ fn decode_export_desc(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExportDesc>>
     }
 }
 
-fn decode_export(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmExport>> {
+fn decode_export(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmExport>> {
     let (name, bytes) = decode_name(bytes)?;
     let (desc, bytes) = decode_export_desc(bytes)?;
     Ok((WasmExport { name, desc }, bytes))
@@ -1001,7 +1001,9 @@ fn decode_export_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDeco
     Ok(())
 }
 
-fn decode_elem_init_func_refs(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[Box<WasmExprRaw>]>>> {
+fn decode_elem_init_func_refs(
+    bytes: &[u8],
+) -> WasmDecodeResult<Decoded<'_, Box<[Box<WasmExprRaw>]>>> {
     let (len, mut bytes) = decode_leb128(bytes)?;
     let mut exprs = Vec::with_capacity(len as usize);
     for _ in 0..len {
@@ -1015,7 +1017,7 @@ fn decode_elem_init_func_refs(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[Box
     Ok((exprs.into_boxed_slice(), bytes))
 }
 
-fn decode_elem_init_exprs(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[Box<WasmExprRaw>]>>> {
+fn decode_elem_init_exprs(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, Box<[Box<WasmExprRaw>]>>> {
     let (len, mut bytes) = decode_leb128(bytes)?;
     let mut exprs = Vec::with_capacity(len as usize);
     for _ in 0..len {
@@ -1026,12 +1028,12 @@ fn decode_elem_init_exprs(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[Box<Was
     Ok((exprs.into_boxed_slice(), bytes))
 }
 
-fn decode_elem_kind(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmRefType>> {
+fn decode_elem_kind(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmRefType>> {
     let (_, bytes) = take_byte_exact::<0x00>(bytes)?;
     Ok((WasmRefType::FuncRef, bytes))
 }
 
-fn decode_elem(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmElem<WasmInstructionRaw>>> {
+fn decode_elem(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmElem<WasmInstructionRaw>>> {
     let (tag, bytes) = decode_leb128(bytes)?;
     match tag {
         0 => {
@@ -1161,13 +1163,13 @@ fn decode_element_section(bytes: &[u8], wmod: &mut WasmModuleBuilder) -> WasmDec
     Ok(())
 }
 
-fn decode_data_bytes(bytes: &[u8]) -> WasmDecodeResult<Decoded<Box<[u8]>>> {
+fn decode_data_bytes(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, Box<[u8]>>> {
     let (len, bytes) = decode_leb128(bytes)?;
     let (data_bytes, bytes) = take_bytes_dyn(bytes, len as usize)?;
     Ok((data_bytes.into_boxed_slice(), bytes))
 }
 
-fn decode_data(bytes: &[u8]) -> WasmDecodeResult<Decoded<WasmData<WasmInstructionRaw>>> {
+fn decode_data(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmData<WasmInstructionRaw>>> {
     let (tag, bytes) = decode_leb128(bytes)?;
     match tag {
         0 => {
@@ -1304,7 +1306,7 @@ fn decode_sections<'b>(
     Ok(((), bytes))
 }
 
-fn decode_magic_bytes(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
+fn decode_magic_bytes(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, ()>> {
     let (buf, bytes) = take_bytes::<4>(bytes)?;
     match buf {
         [0, b'a', b's', b'm'] => Ok(((), bytes)),
@@ -1312,7 +1314,7 @@ fn decode_magic_bytes(bytes: &[u8]) -> WasmDecodeResult<Decoded<()>> {
     }
 }
 
-fn decode_version(bytes: &[u8]) -> WasmDecodeResult<Decoded<u32>> {
+fn decode_version(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, u32>> {
     let (buf, bytes) = take_bytes::<4>(bytes)?;
     Ok((u32::from_le_bytes(buf), bytes))
 }

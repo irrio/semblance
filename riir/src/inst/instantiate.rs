@@ -421,7 +421,7 @@ fn match_limits(externlimits: &WasmLimits, limits: &WasmLimits) -> bool {
     }
 }
 
-fn build_auxiliary_inst(externvals: &[WasmExternVal]) -> WasmModuleInst {
+fn build_auxiliary_inst(externvals: &[WasmExternVal]) -> WasmModuleInst<'_> {
     let winst = WasmModuleInst {
         types: &[],
         funcaddrs: externvals
