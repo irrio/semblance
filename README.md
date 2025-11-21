@@ -10,10 +10,12 @@ the result of that. As such, this is not production quality software. There are 
 places where I've skipped input validation in an effort to move forward quickly.
 One should be careful to only evaluate trusted WebAssembly modules with this interpreter.
 
-I've progressed far enough to have implemented every opcode in the WebAssembly 2.0 specification
+I've progressed far enough to have implemented every opcode in the [WebAssembly 2.0 specification](https://webassembly.github.io/spec/versions/core/WebAssembly-2.0.pdf)
 except for the vector instructions.
 
 ## Build Instructions
+
+Install [Rust](https://doc.rust-lang.org/book/ch01-01-installation.html)
 
 Compile the interpreter by running `cargo build --release`. The executable will be found
 at `target/release/semblance`.
