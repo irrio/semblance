@@ -6,10 +6,11 @@ extern unsigned long __builtin_wasm_memory_size(int);
 extern unsigned long __builtin_wasm_memory_grow(int, unsigned long);
 extern char __heap_base[];
 
-void* sbce_malloc(int bytes) {
-    int current_size = __builtin_wasm_memory_size(0) * WASM_PAGE_SIZE;
-    if (current_size < bytes) {
-        __builtin_wasm_memory_grow(0, (bytes - current_size) / WASM_PAGE_SIZE);
+void* sbce_malloc(unsigned long bytes) {
+    unsigned long current_size = __builtin_wasm_memory_size(0) * WASM_PAGE_SIZE;
+    unsigned long heap_size = current_size - (unsigned long)&__heap_base;
+    if (heap_size < bytes) {
+        __builtin_wasm_memory_grow(0, ((bytes - heap_size) + WASM_PAGE_SIZE) / WASM_PAGE_SIZE);
     }
     return &__heap_base;
 }
