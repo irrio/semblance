@@ -523,6 +523,158 @@ pub fn exec<'wmod>(
                 let a = stack.pop_value();
                 stack.push_value(unsafe { a.num.f64.copysign(b.num.f64) });
             }
+            I32WrapI64 => {
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a as i32);
+            }
+            I32TruncF32S => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a as i32);
+            }
+            I32TruncF32U => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a as u32 as i32);
+            }
+            I32TruncF64S => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a as i32);
+            }
+            I32TruncF64U => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a as u32 as i32);
+            }
+            I64ExtendI32S => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a as i64);
+            }
+            I64ExtendI32U => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a as u64 as i64);
+            }
+            I64TruncF32S => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a as i64);
+            }
+            I64TruncF32U => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a as u64 as i64);
+            }
+            I64TruncF64S => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a as i64);
+            }
+            I64TruncF64U => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a as u64 as i64);
+            }
+            F32ConvertI32S => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a as f32);
+            }
+            F32ConvertI32U => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a as u32 as f32);
+            }
+            F32ConvertI64S => {
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a as f32);
+            }
+            F32ConvertI64U => {
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a as u32 as f32);
+            }
+            F32DemoteF64 => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a as f32);
+            }
+            F64ConvertI32S => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a as f64);
+            }
+            F64ConvertI32U => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a as u64 as f64);
+            }
+            F64ConvertI64S => {
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a as f64);
+            }
+            F64ConvertI64U => {
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a as u64 as f64);
+            }
+            F64PromoteF32 => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a as f64);
+            }
+            I32ReinterpretF32 => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a.to_bits() as i32);
+            }
+            I64ReinterpretF64 => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a.to_bits() as i64);
+            }
+            F32ReinterpretI32 => {
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(f32::from_bits(a as u32));
+            }
+            F64ReinterpretI64 => {
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(f64::from_bits(a as u64));
+            }
+            I32Extend8S => {
+                let a = unsafe { stack.pop_value().num.i32 } as i8;
+                stack.push_value(a as i32);
+            }
+            I32Extend16S => {
+                let a = unsafe { stack.pop_value().num.i32 } as i16;
+                stack.push_value(a as i32);
+            }
+            I64Extend8S => {
+                let a = unsafe { stack.pop_value().num.i64 } as i8;
+                stack.push_value(a as i64);
+            }
+            I64Extend16S => {
+                let a = unsafe { stack.pop_value().num.i64 } as i16;
+                stack.push_value(a as i64);
+            }
+            I64Extend32S => {
+                let a = unsafe { stack.pop_value().num.i64 } as i32;
+                stack.push_value(a as i64);
+            }
+            I32TruncSatF32S => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a.trunc() as i32);
+            }
+            I32TruncSatF32U => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a.trunc() as u32 as i32);
+            }
+            I32TruncSatF64S => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a.trunc() as i32);
+            }
+            I32TruncSatF64U => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a.trunc() as u32 as i32);
+            }
+            I64TruncSatF32S => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a.trunc() as i64);
+            }
+            I64TruncSatF32U => {
+                let a = unsafe { stack.pop_value().num.f32 };
+                stack.push_value(a.trunc() as u64 as i64);
+            }
+            I64TruncSatF64S => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a.trunc() as i64);
+            }
+            I64TruncSatF64U => {
+                let a = unsafe { stack.pop_value().num.f64 };
+                stack.push_value(a.trunc() as u64 as i64);
+            }
             TableGet { table_idx } => {
                 let i = stack.pop_value();
                 let frame = stack.current_frame();
@@ -913,7 +1065,6 @@ pub fn exec<'wmod>(
                     std::ptr::copy(&mem.data[s], &mut mem.data[d], n);
                 }
             }
-            instr @ _ => panic!("instr unimplemented: {:?}", instr),
         }
         ip = unsafe { ip.add(1) };
     }
