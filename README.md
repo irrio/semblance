@@ -74,7 +74,6 @@ This should output:
 
 ```text
 Hello, World!
-()
 ```
 
 ## Contributing

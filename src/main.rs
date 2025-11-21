@@ -261,6 +261,8 @@ fn main() {
         let ty = store.funcs.resolve(funcaddr).type_.input_type.0.as_ref();
         let args = parse_args_for_input_type(ty, &argv).expect("failed to parse args");
         let wres = store.invoke(funcaddr, args).expect("trap!");
-        println!("{}", wres);
+        if wres.ty.len() > 0 {
+            println!("{}", wres);
+        }
     }
 }
