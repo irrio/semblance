@@ -5,7 +5,7 @@ use super::{
 
 #[derive(Debug, Clone, Copy)]
 pub struct WasmInstanceAddr(u32);
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmFuncAddr(u32);
 #[derive(Debug, Clone, Copy)]
 pub struct WasmTableAddr(u32);

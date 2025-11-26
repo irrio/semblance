@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-SEMBLANCE=riir/target/debug/semblance
+SEMBLANCE=target/debug/semblance
 WAST_PATH="${1:?}"
 TEMP_WASM_DIR="$(mktemp -d)"
 SUCCESSES=0
@@ -26,17 +26,15 @@ while read -r CMD; do
             WASM_FILE="$TEMP_WASM_DIR/$FILENAME"
         ;;
         assert_return)
-            echo "skipping assert_return";
-            ((SKIPPED++))
-            # ACTION="$(echo "$CMD" | jq -r '.action')"
-            # INVOKE_FN="$(echo "$ACTION" | jq -r '.field')"
-            # INVOKE_ARGS=$(echo "$ACTION" | jq -r '[.args[].value] | join(" ")')
-            # if $SEMBLANCE "$WASM_FILE" --invoke "$INVOKE_FN" $INVOKE_ARGS; then
-            #     echo "assert_return passed"
-            #     ((SUCCESSES++))
-            # else
-            #     ((FAILURES++))
-            # fi
+            ACTION="$(echo "$CMD" | jq -r '.action')"
+            INVOKE_FN="$(echo "$ACTION" | jq -r '.field')"
+            INVOKE_ARGS=$(echo "$ACTION" | jq -r '[.args[].value] | join(" ")')
+            RETURN_ARGS=$(echo "$CMD" | jq -r '[.expected[].value] | join(" ")')
+            if $SEMBLANCE "$WASM_FILE" --invoke "$INVOKE_FN" $INVOKE_ARGS --assert-return $RETURN_ARGS; then
+                ((SUCCESSES++))
+            else
+                ((FAILURES++))
+            fi
         ;;
         assert_malformed)
             if [[ "$(echo "$CMD" | jq -r '.module_type')" == "text" ]]; then
@@ -44,8 +42,7 @@ while read -r CMD; do
                 ((SKIPPED++))
             else
                 MALFORMED_WASM_FILE="$TEMP_WASM_DIR/$(echo "$CMD" | jq -r '.filename')"
-                echo "assert_malformed($(basename $MALFORMED_WASM_FILE)): $(echo "$CMD" | jq -r '.text')"
-                if $SEMBLANCE "$MALFORMED_WASM_FILE"; then
+                if $SEMBLANCE "$MALFORMED_WASM_FILE" --assert-malformed; then
                     ((FAILURES++))
                 else
                     ((SUCCESSES++))
@@ -54,12 +51,9 @@ while read -r CMD; do
         ;;
         assert_invalid)
             INVALID_WASM_FILE="$TEMP_WASM_DIR/$(echo "$CMD" | jq -r '.filename')"
-            echo "assert_invalid($(basename $INVALID_WASM_FILE)): $(echo "$CMD" | jq -r '.text')";
-            if $SEMBLANCE "$INVALID_WASM_FILE"; then
-                echo "FAILED"
+            if $SEMBLANCE "$INVALID_WASM_FILE" --assert-invalid; then
                 ((FAILURES++))
             else
-                echo "SUCCESS"
                 ((SUCCESSES++))
             fi
         ;;

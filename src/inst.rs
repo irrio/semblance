@@ -351,6 +351,40 @@ impl<'wmod> Display for DynamicWasmResult<'wmod> {
     }
 }
 
+fn wasm_value_eq(ty: &WasmValueType, v1: &WasmValue, v2: &WasmValue) -> bool {
+    match ty {
+        WasmValueType::Num(WasmNumType::I32) => unsafe { v1.num.i32 == v2.num.i32 },
+        WasmValueType::Num(WasmNumType::I64) => unsafe { v1.num.i64 == v2.num.i64 },
+        WasmValueType::Num(WasmNumType::F32) => unsafe { v1.num.f32 == v2.num.f32 },
+        WasmValueType::Num(WasmNumType::F64) => unsafe { v1.num.f64 == v2.num.f64 },
+        WasmValueType::Ref(WasmRefType::ExternRef) => unsafe {
+            v1.ref_.extern_.0 == v2.ref_.extern_.0
+        },
+        WasmValueType::Ref(WasmRefType::FuncRef) => unsafe { v1.ref_.func == v2.ref_.func },
+        WasmValueType::Vec(_wasm_vec_type) => todo!(),
+    }
+}
+
+impl<'wmod> PartialEq for DynamicWasmResult<'wmod> {
+    fn eq(&self, other: &Self) -> bool {
+        if self.ty != other.ty {
+            return false;
+        }
+        for ((v1, v2), ty) in self
+            .res
+            .0
+            .iter()
+            .zip(other.res.0.iter())
+            .zip(self.ty.iter())
+        {
+            if !wasm_value_eq(ty, v1, v2) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
 #[derive(Debug)]
 pub struct WasmTrap {}
 
