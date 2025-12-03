@@ -2,4 +2,6 @@
 .DS_Store
 
 target/
+teststate/
+
 a.out

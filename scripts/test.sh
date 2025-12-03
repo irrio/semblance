@@ -1,87 +1,159 @@
 #!/usr/bin/env zsh
 
-START_TIME=$(date +%s)
-WORK_DIR=$(mktemp -d)
+zmodload zsh/datetime
+setopt KSH_ARRAYS
 
-echo "$WORK_DIR"
-
-cleanup() {
-    rm -rf $WORK_DIR;
+now_millis() {
+    local NOW_SECS="${epochtime[0]}"
+    local NOW_NANOS="${epochtime[1]}"
+    echo $(( NOW_SECS * 1000 + (NOW_NANOS / 1000000) ))
 }
 
-trap cleanup EXIT;
+SEMBLANCE=target/release/semblance
+NUM_WORKERS=8
+START_TIME=$(now_millis)
+WORK_DIR=$(mktemp -d -p ./teststate/runs "$(printf "%x" "$START_TIME")-XXXX")
+TEST_RUN=$(basename "$WORK_DIR")
+DB="./teststate/analytics.duckdb"
 
-declare -A TEST_PIDS;
-declare -A COMPLETED_TESTS;
+echo "running" >"$WORK_DIR/status"
+mkdir "$WORK_DIR/worker"
 
-mkfifo "$WORK_DIR/completions";
-
-for WAST in ./testsuite/*.wast; do
+for ((i=0; i<NUM_WORKERS; i++)); do
+    mkdir "$WORK_DIR/worker/$i"
+    mkfifo "$WORK_DIR/worker/$i/queue"
     (
-        TEST_DIR="$WORK_DIR/$(basename $WAST)"
-        mkdir "$TEST_DIR"
-        sleep 3
-        ./scripts/run-wast.sh "$WAST" "$TEST_DIR" >"$TEST_DIR/run-wast.log" 2>&1
-        RETRIES=5
-        while (( RETRIES > 0 )); do
-            if [[ ! -e "$WORK_DIR/completions" ]]; then
-                exit
+        PASSED=0
+        FAILED=0
+        exec {log_fd}>>"$WORK_DIR/worker/$i/worker.log"
+        exec {csv_fd}>>"$WORK_DIR/worker/$i/test_case_executions.csv"
+
+        log() {
+            echo "[test.sh] $@" >&$log_fd
+        }
+
+        write_csv() {
+            echo "$@" >&$csv_fd
+        }
+
+        while read -r SUITE_NAME TEST_CASE_ID ARGS; do
+            TEST_CASE_START_TIME=$(now_millis)
+            log "$TEST_CASE_ID: $SEMBLANCE $ARGS"
+            "$SEMBLANCE" ${(z)ARGS} >&$log_fd 2>&1
+            EXIT_CODE="$?"
+            TEST_CASE_END_TIME=$(now_millis)
+            if [[ $EXIT_CODE -eq 0 ]]; then
+                ((PASSED++))
+            else
+                ((FAILED++))
             fi
-            echo $WAST >$WORK_DIR/completions;
-            ((RETRIES--));
-            sleep 1
-        done
+            log "EXITED: $EXIT_CODE"
+            write_csv "$TEST_RUN,$SUITE_NAME,$TEST_CASE_ID,$EXIT_CODE,$TEST_CASE_START_TIME,$TEST_CASE_END_TIME"
+        done <"$WORK_DIR/worker/$i/queue"
+
+        echo "$PASSED" >"$WORK_DIR/worker/$i/passed_count"
+        echo "$FAILED" >"$WORK_DIR/worker/$i/failed_count"
+        rm "$WORK_DIR/worker/$i/queue"
+        exec {log_fd}>&-
+        exec {csv_fd}>&-
     ) &
-    TEST_PIDS[$WAST]="$!";
 done
 
-echo "Started ${#TEST_PIDS} test suites..."
+declare -a QUEUE_FDS
 
-while (( ${#TEST_PIDS} > 0 )); do
-    if (( ${#TEST_PIDS} < 5 )); then
-        echo ">> Waiting on (${(@k)TEST_PIDS[@]})"
-    fi
-    read WAST <$WORK_DIR/completions
-    if [[ ${+TEST_PIDS[$WAST]} -eq 1 ]]; then
-        unset "TEST_PIDS[$WAST]"
-        COMPLETED_TESTS[$WAST]=1
-        echo "$WAST completed ${#TEST_PIDS} remaining"
-    fi
+for ((i=0; i<NUM_WORKERS; i++)); do
+    exec {fd}>"$WORK_DIR/worker/$i/queue"
+    QUEUE_FDS+=("$fd")
 done
 
-rm $WORK_DIR/completions;
-END_TIME=$(date +%s)
+declare -i TOTAL_TESTS
+TOTAL_TESTS=$(cat teststate/suites/*/commands.txt | wc -l)
+TESTS_QUEUED=0
 
-PASSED_SUITES=0
-FAILED_SUITES=0
-SUCCESSES=0
-FAILURES=0
-SKIPPED=0
+render_percent() {
+    local -i PERCENT;
+    PERCENT="${1:?}"
+    printf "\r["
+    for ((i=0;i<=25;i++)); do
+        if (( $i * 4 <= $PERCENT )); then
+            printf "="
+        else
+            printf " "
+        fi
+    done
+    printf "]"
+}
 
-for WAST in "${(@k)COMPLETED_TESTS}"; do
-    TEST_DIR="$WORK_DIR/$(basename $WAST)";
-    if [[ $(cat $TEST_DIR/failure_count) -eq 0 ]]; then
-        PASSED_SUITES=$(( PASSED_SUITES + 1 ))
-    else
-        FAILED_SUITES=$(( FAILED_SUITES + 1 ))
+report_progress() {
+    if (( TESTS_QUEUED == TOTAL_TESTS || (TESTS_QUEUED % 50) == 0 )); then
+        local PERCENT=$(bc -e "($TESTS_QUEUED / $TOTAL_TESTS) * 100" --scale 2)
+        local PROGRESS_BAR=$(render_percent "$PERCENT")
+        printf "\r%s" "$PROGRESS_BAR"
     fi
-    SUCCESSES=$(( SUCCESSES + "$(cat $TEST_DIR/success_count)" ))
-    FAILURES=$(( FAILURES + "$(cat $TEST_DIR/failure_count)" ))
-    SKIPPED=$(( SKIPPED + "$(cat $TEST_DIR/skipped_count)" ))
+}
+
+round_robin() {
+    while read -r LINE; do
+        idx=$(( TESTS_QUEUED % NUM_WORKERS ))
+        echo "$LINE" >&${QUEUE_FDS[$idx]}
+        ((TESTS_QUEUED++))
+        report_progress
+    done
+}
+
+cat teststate/suites/*/commands.txt | round_robin
+
+for ((i=0; i<NUM_WORKERS; i++)); do
+    fd="${QUEUE_FDS[$i]}"
+    exec {fd}>&-
 done
 
-echo "------------------------------"
-printf "%-20s %-4s\n" "PASSED SUITES" "$PASSED_SUITES"
-printf "%-20s %-4s\n" "FAILED SUITES" "$FAILED_SUITES"
-echo "------------------------------"
-printf "%-20s %-4s\n" "SUCCESSES" "$SUCCESSES"
-printf "%-20s %-4s\n" "FAILURES" "$FAILURES"
-printf "%-20s %-4s\n" "SKIPPED" "$SKIPPED"
-echo "------------------------------"
+wait
+END_TIME=$(now_millis)
 
-ELAPSED_SECONDS=$(( END_TIME - START_TIME ))
-ELAPSED_MINUTES=$(( ELAPSED_SECONDS / 60 ))
-REM_SECONDS=$(( ELAPSED_SECONDS % 60 ))
-echo "Test run took ${ELAPSED_MINUTES}m ${REM_SECONDS}s"
+PASSED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/passed_count)"
+FAILED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/failed_count)"
 
+declare -i PANICS
+PANICS=$(grep -o panicked $WORK_DIR/worker/*/worker.log | wc -l)
+
+echo "$PANICS" >"$WORK_DIR/panic_count"
+echo "$PASSED" >"$WORK_DIR/passed_count"
+echo "$FAILED" >"$WORK_DIR/failed_count"
+
+if [[ "$FAILED" -eq 0 ]]; then
+    echo "passed" >"$WORK_DIR/status"
+    PASSED_BOOL=true
+else
+    echo "failed" >"$WORK_DIR/status"
+    PASSED_BOOL=false
+fi
+
+if [ -z "$(git status --porcelain)" ]; then
+    GIT_DIRTY=false
+else
+    GIT_DIRTY=true
+fi
+
+duckdb "$DB" <<<"insert into test_run(id, exe, git_commit_sha, git_dirty, started_at, finished_at, passed)
+    VALUES ('$TEST_RUN', '$SEMBLANCE', '$(git rev-parse HEAD)', '$GIT_DIRTY', make_timestamp_ms($START_TIME), make_timestamp_ms($END_TIME), $PASSED_BOOL);
+    insert into test_case_execution(test_run_id,suite_name,test_case,exit_code,started_at,finished_at)
+    select
+        column0 as test_run_id,
+        column1 as suite_name,
+        column2 as test_case,
+        column3 as exit_code,
+        make_timestamp_ms(column4) as started_at,
+        make_timestamp_ms(column5) as finished_at
+    from read_csv('./teststate/runs/$TEST_RUN/worker/*/test_case_executions.csv')"
+
+TEST_DURATION=$(( (END_TIME - START_TIME) / 1000 ))
+ELAPSED_MINS=$(( TEST_DURATION / 60 ))
+SECS_REMAINING=$(( TEST_DURATION % 60 ))
+echo "\r---------------------------------------------"
+echo "Completed in ${ELAPSED_MINS}m ${SECS_REMAINING}s -- $PANICS panics detected"
+echo "---------------------------------------------"
+printf "%-10s %-10s\n" PASSED "$PASSED"
+printf "%-10s %-10s\n" FAILED "$FAILED"
+echo "---------------------------------------------"
 echo "$WORK_DIR"
