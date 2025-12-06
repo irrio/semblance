@@ -156,4 +156,5 @@ echo "---------------------------------------------"
 printf "%-10s %-10s\n" PASSED "$PASSED"
 printf "%-10s %-10s\n" FAILED "$FAILED"
 echo "---------------------------------------------"
+./scripts/trendline.sh
 echo "$WORK_DIR"
