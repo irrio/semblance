@@ -226,7 +226,7 @@ impl<'wmod> WasmStore<'wmod> {
         &mut self,
         funcaddr: WasmFuncAddr,
         args: Box<[WasmValue]>,
-    ) -> Result<DynamicWasmResult<'wmod>, WasmTrap> {
+    ) -> Result<DynamicWasmResult, WasmTrap> {
         let func = self.funcs.resolve(funcaddr);
         let ty = func.type_;
         match func.impl_ {
@@ -247,7 +247,7 @@ impl<'wmod> WasmStore<'wmod> {
                     out.push(stack.pop_value());
                 }
                 Ok(DynamicWasmResult {
-                    ty: &ty.output_type.0,
+                    ty: ty.output_type.0.clone(),
                     res: WasmResult(out),
                 })
             }
@@ -315,12 +315,27 @@ pub type WasmHostFunc =
 
 pub struct WasmResult(pub Vec<WasmValue>);
 
-pub struct DynamicWasmResult<'wmod> {
-    pub ty: &'wmod [WasmValueType],
+pub struct DynamicWasmResult {
+    pub ty: Box<[WasmValueType]>,
     pub res: WasmResult,
 }
 
-impl<'wmod> Display for DynamicWasmResult<'wmod> {
+impl DynamicWasmResult {
+    pub fn void() -> Self {
+        DynamicWasmResult {
+            ty: Box::new([]),
+            res: WasmResult(vec![]),
+        }
+    }
+}
+
+impl std::fmt::Debug for DynamicWasmResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(self, f)
+    }
+}
+
+impl Display for DynamicWasmResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.ty.len() != 1 {
             write!(f, "(")?;
@@ -365,7 +380,7 @@ fn wasm_value_eq(ty: &WasmValueType, v1: &WasmValue, v2: &WasmValue) -> bool {
     }
 }
 
-impl<'wmod> PartialEq for DynamicWasmResult<'wmod> {
+impl PartialEq for DynamicWasmResult {
     fn eq(&self, other: &Self) -> bool {
         if self.ty != other.ty {
             return false;

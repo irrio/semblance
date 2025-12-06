@@ -1,13 +1,13 @@
 use std::{
     ffi::{CStr, c_char},
     num::{ParseFloatError, ParseIntError},
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 
 use semblance::{
     inst::{
-        DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmValue,
-        table::WasmInstanceAddr,
+        DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
+        instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
     module::{WasmImportDesc, WasmMemIdx, WasmModule, WasmNumType, WasmReadError, WasmValueType},
 };
@@ -19,6 +19,7 @@ Options:
     -h, --help                      Print this help text
     -I, --invoke <FN> [ARGS...]     Invoke an exported function
     --assert-return [VALUES...]     Assert that the invoked function returns a specific set of values
+    --assert-trap [MESSAGE]         Assert that the invoked function traps
     --assert-invalid                Assert that the module does not pass validation
     --assert-malformed              Assert that the module cannot be decoded
 ";
@@ -33,6 +34,7 @@ struct CliArgs {
 #[derive(Debug)]
 enum Assertion {
     Return(Vec<String>),
+    Trap(Option<String>),
     Invalid,
     Malformed,
 }
@@ -50,6 +52,7 @@ enum CliFlag<'s> {
     Noop,
     Unknown(&'s str),
     AssertReturn(Vec<String>),
+    AssertTrap(Option<String>),
     AssertInvalid,
     AssertMalformed,
 }
@@ -67,6 +70,10 @@ fn parse_flag<'a>(argv: &'a [&'a str]) -> (CliFlag<'a>, &'a [&'a str]) {
         ["--assert-return", rest @ ..] => {
             let (vals, rest) = parse_assert_return_vals(rest);
             (CliFlag::AssertReturn(vals), rest)
+        }
+        ["--assert-trap", rest @ ..] => {
+            let (message, rest) = parse_assert_trap_message(rest);
+            (CliFlag::AssertTrap(message), rest)
         }
         ["--assert-invalid", rest @ ..] => (CliFlag::AssertInvalid, rest),
         ["--assert-malformed", rest @ ..] => (CliFlag::AssertMalformed, rest),
@@ -101,6 +108,16 @@ fn parse_assert_return_vals<'a>(argv: &'a [&'a str]) -> (Vec<String>, &'a [&'a s
         .collect::<Vec<_>>();
     let rest = &argv[idx..];
     (vals, rest)
+}
+
+fn parse_assert_trap_message<'a>(argv: &'a [&'a str]) -> (Option<String>, &'a [&'a str]) {
+    if let Some(s) = argv.get(0)
+        && is_flag(s)
+    {
+        (Some(s.to_string()), &argv[1..])
+    } else {
+        (None, argv)
+    }
 }
 
 fn is_flag(s: &str) -> bool {
@@ -141,6 +158,7 @@ impl CliArgs {
                     }
                 }
                 CliFlag::AssertReturn(vals) => assert = Some(Assertion::Return(vals)),
+                CliFlag::AssertTrap(message) => assert = Some(Assertion::Trap(message)),
                 CliFlag::AssertMalformed => assert = Some(Assertion::Malformed),
                 CliFlag::AssertInvalid => assert = Some(Assertion::Invalid),
                 CliFlag::Module(m) => module_path = Some(m),
@@ -167,36 +185,6 @@ impl CliArgs {
             eprintln!("<MODULE> is required");
             exit();
         }
-    }
-}
-
-fn read_module_or_exit(path: &Path, assert: &Option<Assertion>) -> WasmModule {
-    match WasmModule::read(path) {
-        Ok(module) => module,
-        Err(e) => match *assert {
-            Some(Assertion::Invalid) => {
-                if let WasmReadError::Validation(v) = e {
-                    eprintln!("--assert-invalid succeeded with validation err: {:?}", v);
-                    std::process::exit(0);
-                } else {
-                    eprintln!("--assert-invalid failed with another err: {:?}", e);
-                    std::process::exit(1);
-                }
-            }
-            Some(Assertion::Malformed) => {
-                if let WasmReadError::Decode(d) = e {
-                    eprintln!("--assert-malformed succeeded with decode err: {:?}", d);
-                    std::process::exit(0);
-                } else {
-                    eprintln!("--assert-malformed failed with another err: {:?}", e);
-                    std::process::exit(1);
-                }
-            }
-            None | Some(Assertion::Return(_)) => {
-                eprintln!("failed to load module: {:?}", e);
-                std::process::exit(3);
-            }
-        },
     }
 }
 
@@ -251,8 +239,8 @@ fn parse_args_for_value_type(
 
 #[derive(Debug)]
 #[allow(dead_code)]
-enum LinkError<'wmod> {
-    UnknownSymbol(&'wmod str, &'wmod str),
+enum WasmLinkError {
+    UnknownSymbol(String, String),
 }
 
 fn hostcall_puts(
@@ -265,7 +253,7 @@ fn hostcall_puts(
     let mem = store.mems.resolve(memaddr);
     let ptr = (&mem.data[offset as usize..]).as_ptr().cast::<c_char>();
     let cstr = unsafe { CStr::from_ptr(ptr) };
-    let str = cstr.to_str().expect("invalid utf8");
+    let str = cstr.to_string_lossy();
     println!("{}", str);
     Box::new([])
 }
@@ -273,7 +261,7 @@ fn hostcall_puts(
 fn resolve_imports<'wmod>(
     store: &mut WasmStore<'wmod>,
     wmod: &'wmod WasmModule,
-) -> Result<Vec<WasmExternVal>, LinkError<'wmod>> {
+) -> Result<Vec<WasmExternVal>, WasmLinkError> {
     let mut externvals = Vec::with_capacity(wmod.imports.len());
     for import in &wmod.imports {
         if let WasmImportDesc::Func(typeidx) = import.desc {
@@ -284,24 +272,45 @@ fn resolve_imports<'wmod>(
                 continue;
             }
         }
-        return Err(LinkError::UnknownSymbol(
-            &import.module_name.0,
-            &import.item_name.0,
+        return Err(WasmLinkError::UnknownSymbol(
+            import.module_name.0.to_string(),
+            import.item_name.0.to_string(),
         ));
     }
     Ok(externvals)
 }
 
-fn main() {
-    let args = CliArgs::parse_or_exit();
-    let module = read_module_or_exit(&args.module_path, &args.assert);
+#[derive(Debug)]
+#[allow(dead_code)]
+enum SemblanceError {
+    Read(WasmReadError),
+    Link(WasmLinkError),
+    Instantiate(WasmInstantiationError),
+    Args(ArgumentError),
+    Trap(WasmTrap),
+}
 
-    if let Some(InvokeArgs { fn_name, argv }) = args.invoke {
+#[derive(Debug)]
+#[allow(dead_code)]
+enum ArgumentError {
+    ExportNotFound(String),
+    InvalidInput(ParseArgError),
+}
+
+type SemblanceResult = Result<DynamicWasmResult, SemblanceError>;
+
+fn run(args: &CliArgs) -> SemblanceResult {
+    let module = WasmModule::read(&args.module_path).map_err(SemblanceError::Read)?;
+    if let Some(InvokeArgs {
+        ref fn_name,
+        ref argv,
+    }) = args.invoke
+    {
         let mut store = WasmStore::new();
-        let externvals = resolve_imports(&mut store, &module).expect("link error");
+        let externvals = resolve_imports(&mut store, &module).map_err(SemblanceError::Link)?;
         let winst_id = store
             .instantiate(&module, &externvals)
-            .expect("failed to instantiate");
+            .map_err(SemblanceError::Instantiate)?;
         let funcaddr = store
             .instances
             .resolve(winst_id)
@@ -315,29 +324,110 @@ fn main() {
                 }
                 None
             })
-            .expect("no function export found with name");
+            .ok_or_else(|| {
+                SemblanceError::Args(ArgumentError::ExportNotFound(fn_name.to_string()))
+            })?;
         let ty = store.funcs.resolve(funcaddr).type_.input_type.0.as_ref();
-        let invoke_args = parse_args_for_value_type(ty, &argv).expect("failed to parse args");
-        let wres = store.invoke(funcaddr, invoke_args).expect("trap!");
-        if let Some(Assertion::Return(assert_vals)) = args.assert {
-            let assert_vals = parse_args_for_value_type(wres.ty, &assert_vals)
-                .expect("failed to parse assert vals");
+        let invoke_args = parse_args_for_value_type(ty, &argv)
+            .map_err(|e| SemblanceError::Args(ArgumentError::InvalidInput(e)))?;
+        let wres = store
+            .invoke(funcaddr, invoke_args)
+            .map_err(SemblanceError::Trap)?;
+        return Ok(wres);
+    }
+    Ok(DynamicWasmResult::void())
+}
+
+fn main() {
+    let args = CliArgs::parse_or_exit();
+    let wres = run(&args);
+
+    if let Some(ref assertion) = args.assert {
+        return apply_assertion(wres, &assertion);
+    }
+
+    match wres {
+        Ok(v) => {
+            if !v.ty.is_empty() {
+                println!("{}", v);
+            }
+        }
+        Err(e) => {
+            eprintln!("{:?}", e);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn apply_assertion(wres: SemblanceResult, assertion: &Assertion) {
+    match assertion {
+        Assertion::Invalid => assert_invalid(wres),
+        Assertion::Malformed => assert_malformed(wres),
+        Assertion::Return(vals) => assert_return(wres, vals),
+        Assertion::Trap(message) => assert_trap(wres, message),
+    }
+}
+
+fn assert_invalid(wres: SemblanceResult) {
+    match wres {
+        Err(SemblanceError::Read(WasmReadError::Validation(_))) => {
+            eprintln!("--assert-invalid passed");
+        }
+        _ => {
+            eprintln!("--assert-invalid failed");
+            eprintln!("expected an invalid module, got: ${:?}", wres);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn assert_malformed(wres: SemblanceResult) {
+    match wres {
+        Err(SemblanceError::Read(WasmReadError::Decode(_))) => {
+            eprintln!("--assert-malformed passed");
+        }
+        _ => {
+            eprintln!("--assert-malformed failed");
+            eprintln!("expected a malformed module, got: ${:?}", wres);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn assert_return(wres: SemblanceResult, vals: &[String]) {
+    match wres {
+        Ok(v) => {
+            let assert_vals =
+                parse_args_for_value_type(&v.ty, vals).expect("failed to parse assert vals");
             let assert_dyn = DynamicWasmResult {
-                ty: wres.ty,
+                ty: v.ty.clone(),
                 res: WasmResult(assert_vals.into_vec()),
             };
-            if assert_dyn == wres {
+            if assert_dyn == v {
                 eprintln!("--assert-return passed");
             } else {
-                eprintln!(
-                    "--assert-return failed. expected: {} actual return was: {}",
-                    assert_dyn, wres
-                );
+                eprintln!("--assert-return failed",);
+                eprintln!("expected {} but got {}", assert_dyn, v);
                 std::process::exit(1);
             }
         }
-        if wres.ty.len() > 0 {
-            println!("{}", wres);
+        _ => {
+            eprintln!("--assert-return failed");
+            eprintln!("expected return value but got {:?}", wres);
+            std::process::exit(1);
+        }
+    }
+}
+
+fn assert_trap(wres: SemblanceResult, _message: &Option<String>) {
+    match wres {
+        Err(SemblanceError::Trap(_t)) => {
+            eprintln!("--assert-trap passed");
+        }
+        _ => {
+            eprintln!("--assert-trap failed");
+            eprintln!("expected trap but got {:?}", wres);
+            std::process::exit(1);
         }
     }
 }
