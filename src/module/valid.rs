@@ -971,10 +971,22 @@ fn validate_instr(
             stack.peek_result_type(&label_entry.ty)?;
         }
         BreakTable {
-            labels: _,
-            default_label: _,
+            labels,
+            default_label,
         } => {
-            todo!("validate break_table");
+            stack.pop(t!(i32))?;
+            let default_label_entry = expr_ctx
+                .labels
+                .peek(*default_label)
+                .ok_or(WasmValidationError::InvalidLabelIdx(default_label.0))?;
+            stack.peek_result_type(&default_label_entry.ty)?;
+            for label_idx in labels {
+                let label_entry = expr_ctx
+                    .labels
+                    .peek(*label_idx)
+                    .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
+                stack.peek_result_type(&label_entry.ty)?;
+            }
         }
         Return => match expr_ctx.ret {
             None => return Err(WasmValidationError::InvalidReturn),
@@ -1140,7 +1152,7 @@ mod context {
             self.0.pop()
         }
 
-        pub fn peek(&mut self, label_idx: WasmLabelIdx) -> Option<&LabelEntry> {
+        pub fn peek(&self, label_idx: WasmLabelIdx) -> Option<&LabelEntry> {
             let idx = (self.0.len() - 1) - label_idx.0 as usize;
             self.0.get(idx)
         }

@@ -861,10 +861,18 @@ pub fn exec<'wmod>(
                 }
             }
             BreakTable {
-                labels: _,
-                default_label: _,
+                labels,
+                default_label,
             } => {
-                todo!("break_table");
+                let i = unsafe { stack.pop_value().num.i32 };
+                let label_idx = if (i as usize) < labels.len() {
+                    &labels[i as usize]
+                } else {
+                    default_label
+                };
+                let label = stack.pop_label(*label_idx);
+                ip = label.instr;
+                continue;
             }
             Return => {
                 stack.pop_frame();
