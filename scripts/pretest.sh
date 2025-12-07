@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS test_case_execution (
     test_run_id     VARCHAR NOT NULL REFERENCES test_run(id),
     suite_name      VARCHAR NOT NULL,
     test_case       VARCHAR NOT NULL,
-    exit_code       INTEGER NOT NULL,
+    exit_code       INTEGER,
     started_at      TIMESTAMP NOT NULL,
     finished_at     TIMESTAMP NOT NULL
 );

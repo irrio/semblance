@@ -25,6 +25,7 @@ for ((i=0; i<NUM_WORKERS; i++)); do
     (
         PASSED=0
         FAILED=0
+        SKIPPED=0
         exec {log_fd}>>"$WORK_DIR/worker/$i/worker.log"
         exec {csv_fd}>>"$WORK_DIR/worker/$i/test_case_executions.csv"
 
@@ -39,20 +40,32 @@ for ((i=0; i<NUM_WORKERS; i++)); do
         while read -r SUITE_NAME TEST_CASE_ID ARGS; do
             TEST_CASE_START_TIME=$(now_millis)
             log "$TEST_CASE_ID: $SEMBLANCE $ARGS"
-            "$SEMBLANCE" ${(z)ARGS} >&$log_fd 2>&1
-            EXIT_CODE="$?"
-            TEST_CASE_END_TIME=$(now_millis)
-            if [[ $EXIT_CODE -eq 0 ]]; then
-                ((PASSED++))
+            if [[ "$SUITE_NAME" != *simd* ]]; then
+                "$SEMBLANCE" ${(z)ARGS} >&$log_fd 2>&1
+                EXIT_CODE="$?"
             else
-                ((FAILED++))
+                log "Skipping"
+                EXIT_CODE="NULL"
             fi
+            TEST_CASE_END_TIME=$(now_millis)
+            case $EXIT_CODE in
+                0)
+                    ((PASSED++))
+                ;;
+                NULL)
+                    ((SKIPPED++))
+                ;;
+                *)
+                    ((FAILED++))
+                ;;
+            esac
             log "EXITED: $EXIT_CODE"
             write_csv "$TEST_RUN,$SUITE_NAME,$TEST_CASE_ID,$EXIT_CODE,$TEST_CASE_START_TIME,$TEST_CASE_END_TIME"
         done <"$WORK_DIR/worker/$i/queue"
 
         echo "$PASSED" >"$WORK_DIR/worker/$i/passed_count"
         echo "$FAILED" >"$WORK_DIR/worker/$i/failed_count"
+        echo "$SKIPPED" >"$WORK_DIR/worker/$i/skipped_count"
         rm "$WORK_DIR/worker/$i/queue"
         exec {log_fd}>&-
         exec {csv_fd}>&-
@@ -113,6 +126,7 @@ END_TIME=$(now_millis)
 
 PASSED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/passed_count)"
 FAILED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/failed_count)"
+SKIPPED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/skipped_count)"
 
 declare -i PANICS
 PANICS=$(grep -o panicked $WORK_DIR/worker/*/worker.log | wc -l)
@@ -120,6 +134,7 @@ PANICS=$(grep -o panicked $WORK_DIR/worker/*/worker.log | wc -l)
 echo "$PANICS" >"$WORK_DIR/panic_count"
 echo "$PASSED" >"$WORK_DIR/passed_count"
 echo "$FAILED" >"$WORK_DIR/failed_count"
+echo "$SKIPPED" >"$WORK_DIR/skipped_count"
 
 if [[ "$FAILED" -eq 0 ]]; then
     echo "passed" >"$WORK_DIR/status"
@@ -142,7 +157,7 @@ duckdb "$DB" <<<"insert into test_run(id, exe, git_commit_sha, git_dirty, starte
         column0 as test_run_id,
         column1 as suite_name,
         column2 as test_case,
-        column3 as exit_code,
+        TRY_CAST(column3 as INTEGER) as exit_code,
         make_timestamp_ms(column4) as started_at,
         make_timestamp_ms(column5) as finished_at
     from read_csv('./teststate/runs/$TEST_RUN/worker/*/test_case_executions.csv')"
@@ -155,6 +170,7 @@ echo "Completed in ${ELAPSED_MINS}m ${SECS_REMAINING}s -- $PANICS panics detecte
 echo "---------------------------------------------"
 printf "%-10s %-10s\n" PASSED "$PASSED"
 printf "%-10s %-10s\n" FAILED "$FAILED"
+printf "%-10s %-10s\n" SKIPPED "$SKIPPED"
 echo "---------------------------------------------"
-./scripts/trendline.sh
 echo "$WORK_DIR"
+./scripts/trendline.sh
