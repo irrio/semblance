@@ -37,6 +37,38 @@ macro_rules! mem_store {
     };
 }
 
+macro_rules! invoke {
+    ($f:ident, $stack:ident, $store:ident, $winst_id:ident, $ip:ident) => {
+        let args = $stack.pop_values($f.type_.input_type.0.len());
+        match $f.impl_ {
+            WasmFuncImpl::Host { hostfunc } => {
+                let ret = hostfunc($store, $winst_id, &args);
+                for val in ret {
+                    $stack.push_value(val);
+                }
+            }
+            WasmFuncImpl::Wasm {
+                winst_id,
+                func: funcimpl,
+            } => {
+                let mut locals = args;
+                for local_type in &funcimpl.locals {
+                    locals.push(WasmValue::default_of_type(local_type));
+                }
+                $stack.push_label(WasmLabel {
+                    instr: unsafe { $ip.add(1) },
+                });
+                $stack.push_frame(WasmFrame {
+                    locals: locals.into_boxed_slice(),
+                    winst_id,
+                });
+                $ip = &funcimpl.body[0];
+                continue;
+            }
+        }
+    };
+}
+
 pub fn exec<'wmod>(
     stack: &mut WasmStack,
     store: &mut WasmStore<'wmod>,
@@ -887,39 +919,30 @@ pub fn exec<'wmod>(
                 let winst_id = stack.current_frame().winst_id;
                 let funcaddr = store.instances.resolve(winst_id).addr_of(*func_idx);
                 let func = store.funcs.resolve(funcaddr);
-                let args = stack.pop_values(func.type_.input_type.0.len());
-                match func.impl_ {
-                    WasmFuncImpl::Host { hostfunc } => {
-                        let ret = hostfunc(store, winst_id, &args);
-                        for val in ret {
-                            stack.push_value(val);
-                        }
-                    }
-                    WasmFuncImpl::Wasm {
-                        winst_id,
-                        func: funcimpl,
-                    } => {
-                        let mut locals = args;
-                        for local_type in &funcimpl.locals {
-                            locals.push(WasmValue::default_of_type(local_type));
-                        }
-                        stack.push_label(WasmLabel {
-                            instr: unsafe { ip.add(1) },
-                        });
-                        stack.push_frame(WasmFrame {
-                            locals: locals.into_boxed_slice(),
-                            winst_id,
-                        });
-                        ip = &funcimpl.body[0];
-                        continue;
-                    }
-                }
+                invoke!(func, stack, store, winst_id, ip);
             }
             CallIndirect {
-                table_idx: _,
-                type_idx: _,
+                table_idx,
+                type_idx,
             } => {
-                todo!("call_indirect");
+                let winst_id = stack.current_frame().winst_id;
+                let tableaddr = store.instances.resolve(winst_id).addr_of(*table_idx);
+                let table = store.tables.resolve(tableaddr);
+                let ft_expect = &store.instances.resolve(winst_id).types[type_idx.0 as usize];
+                let i = unsafe { stack.pop_value().num.i32 } as usize;
+                if i >= table.elems.len() {
+                    return Err(WasmTrap {});
+                }
+                let r = table.elems[i];
+                if unsafe { r.func }.is_null() {
+                    return Err(WasmTrap {});
+                }
+                let func = store.funcs.resolve(unsafe { r.func });
+                let ft_actual = func.type_;
+                if ft_actual != ft_expect {
+                    return Err(WasmTrap {});
+                }
+                invoke!(func, stack, store, winst_id, ip);
             }
             RefNull { ref_type: _ } => {
                 stack.push_value(WasmRefValue::NULL);
