@@ -79,11 +79,35 @@ impl<'wmod> WasmStore<'wmod> {
         externvals: &[WasmExternVal],
     ) -> WasmInstantiationResult<WasmInstanceAddr> {
         typecheck_externvals(self, wmod, externvals)?;
-        let winst_init = build_auxiliary_inst(externvals);
+        let counts = count_externvals(externvals);
+        let winst_id = self.alloc_inst(wmod);
+        let mut funcaddrs = Vec::with_capacity(counts.funcs + wmod.funcs.len());
+        funcaddrs.extend(externvals.iter().filter_map(|e| match e {
+            WasmExternVal::Func(funcaddr) => Some(funcaddr),
+            _ => None,
+        }));
+        for func in &wmod.funcs {
+            funcaddrs.push(self.alloc_func(winst_id, wmod, func));
+        }
+        let funcaddrs = funcaddrs.into_boxed_slice();
+        let winst_init = build_auxiliary_inst(externvals, funcaddrs);
         let globalinit = eval_global_initializers(self, &winst_init, wmod);
         let refinit = eval_element_segment_initializers(self, &winst_init, wmod);
 
-        let winst_id = self.alloc_module(wmod, externvals, globalinit, refinit);
+        let WasmModuleInst {
+            funcaddrs,
+            types: _,
+            tableaddrs: _,
+            memaddrs: _,
+            globaladdrs: _,
+            elemaddrs: _,
+            dataaddrs: _,
+            exports: _,
+        } = winst_init;
+
+        self.alloc_module(
+            wmod, winst_id, externvals, globalinit, refinit, funcaddrs, &counts,
+        );
         let mut stack = WasmStack::new();
 
         for (i, elem) in wmod.elems.iter().enumerate() {
@@ -161,22 +185,14 @@ impl<'wmod> WasmStore<'wmod> {
     fn alloc_module(
         &mut self,
         wmod: &'wmod WasmModule,
+        winst_id: WasmInstanceAddr,
         externvals: &[WasmExternVal],
         globalinit: Box<[WasmValue]>,
         refinit: Box<[Box<[WasmRefValue]>]>,
-    ) -> WasmInstanceAddr {
-        let counts = count_externvals(externvals);
-        let winst_id = self.alloc_inst(wmod);
-
-        let mut funcaddrs = Vec::with_capacity(counts.funcs + wmod.funcs.len());
-        funcaddrs.extend(externvals.iter().filter_map(|e| match e {
-            WasmExternVal::Func(funcaddr) => Some(funcaddr),
-            _ => None,
-        }));
-        for func in &wmod.funcs {
-            funcaddrs.push(self.alloc_func(winst_id, wmod, func));
-        }
-        self.instances.resolve_mut(winst_id).funcaddrs = funcaddrs.into_boxed_slice();
+        funcaddrs: Box<[WasmFuncAddr]>,
+        counts: &ExternValCounts,
+    ) {
+        self.instances.resolve_mut(winst_id).funcaddrs = funcaddrs;
 
         let mut tableaddrs = Vec::with_capacity(counts.tables + wmod.tables.len());
         tableaddrs.extend(externvals.iter().filter_map(|e| match e {
@@ -228,8 +244,6 @@ impl<'wmod> WasmStore<'wmod> {
             });
         }
         self.instances.resolve_mut(winst_id).exports = exports.into_boxed_slice();
-
-        winst_id
     }
 
     fn alloc_inst(&mut self, wmod: &'wmod WasmModule) -> WasmInstanceAddr {
@@ -421,17 +435,13 @@ fn match_limits(externlimits: &WasmLimits, limits: &WasmLimits) -> bool {
     }
 }
 
-fn build_auxiliary_inst(externvals: &[WasmExternVal]) -> WasmModuleInst<'_> {
+fn build_auxiliary_inst(
+    externvals: &[WasmExternVal],
+    funcaddrs: Box<[WasmFuncAddr]>,
+) -> WasmModuleInst<'_> {
     let winst = WasmModuleInst {
         types: &[],
-        funcaddrs: externvals
-            .iter()
-            .filter_map(|externval| match externval {
-                WasmExternVal::Func(funcaddr) => Some(*funcaddr),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
+        funcaddrs: funcaddrs,
         tableaddrs: Box::new([]),
         memaddrs: Box::new([]),
         globaladdrs: externvals
