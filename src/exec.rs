@@ -158,9 +158,6 @@ pub fn exec<'wmod>(
             I32Sub => {
                 let b = stack.pop_value();
                 let a = stack.pop_value();
-                if (unsafe { a.num.i32 } <= 0) {
-                    todo!("debug me");
-                }
                 stack.push_value(unsafe { a.num.i32.wrapping_sub(b.num.i32) });
             }
             I32Mul => {
