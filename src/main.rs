@@ -1,4 +1,5 @@
 use std::{
+    f32,
     ffi::{CStr, c_char},
     num::{ParseFloatError, ParseIntError},
     path::PathBuf,
@@ -210,12 +211,20 @@ fn parse_arg_with_type(ty: &WasmValueType, argv: &str) -> Result<WasmValue, Pars
             },
             WasmNumType::F32 => WasmValue {
                 num: WasmNumValue {
-                    f32: argv.parse().map_err(ParseArgError::Float)?,
+                    f32: if argv.starts_with("nan") {
+                        f32::NAN
+                    } else {
+                        argv.parse().map_err(ParseArgError::Float)?
+                    },
                 },
             },
             WasmNumType::F64 => WasmValue {
                 num: WasmNumValue {
-                    f64: argv.parse().map_err(ParseArgError::Float)?,
+                    f64: if argv.starts_with("nan") {
+                        f64::NAN
+                    } else {
+                        argv.parse().map_err(ParseArgError::Float)?
+                    },
                 },
             },
         },

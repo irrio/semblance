@@ -370,8 +370,12 @@ fn wasm_value_eq(ty: &WasmValueType, v1: &WasmValue, v2: &WasmValue) -> bool {
     match ty {
         WasmValueType::Num(WasmNumType::I32) => unsafe { v1.num.i32 == v2.num.i32 },
         WasmValueType::Num(WasmNumType::I64) => unsafe { v1.num.i64 == v2.num.i64 },
-        WasmValueType::Num(WasmNumType::F32) => unsafe { v1.num.f32 == v2.num.f32 },
-        WasmValueType::Num(WasmNumType::F64) => unsafe { v1.num.f64 == v2.num.f64 },
+        WasmValueType::Num(WasmNumType::F32) => unsafe {
+            (v1.num.f32.is_nan() && v2.num.f32.is_nan()) || v1.num.f32 == v2.num.f32
+        },
+        WasmValueType::Num(WasmNumType::F64) => unsafe {
+            (v1.num.f64.is_nan() && v2.num.f64.is_nan()) || v1.num.f64 == v2.num.f64
+        },
         WasmValueType::Ref(WasmRefType::ExternRef) => unsafe {
             v1.ref_.extern_.0 == v2.ref_.extern_.0
         },
