@@ -7,4 +7,4 @@ fi
 
 WORK_DIR="teststate/runs/$TEST_RUN_ID"
 
-grep -h -A 1 panicked $WORK_DIR/worker/*/worker.log | less --long-prompt
+grep -h -B 2 -A 1 panicked $WORK_DIR/worker/*/worker.log | less --long-prompt
