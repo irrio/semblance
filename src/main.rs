@@ -10,7 +10,8 @@ use semblance::{
         DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
         instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
-    module::{WasmImportDesc, WasmMemIdx, WasmModule, WasmNumType, WasmReadError, WasmValueType},
+    link::{WasmLinkError, WasmLinker},
+    module::{WasmMemIdx, WasmModule, WasmNumType, WasmReadError, WasmValueType},
 };
 
 const HELP_TEXT: &'static str = "
@@ -246,12 +247,6 @@ fn parse_args_for_value_type(
     Ok(parsed.into_boxed_slice())
 }
 
-#[derive(Debug)]
-#[allow(dead_code)]
-enum WasmLinkError {
-    UnknownSymbol(String, String),
-}
-
 fn hostcall_puts(
     store: &mut WasmStore,
     winst_id: WasmInstanceAddr,
@@ -265,28 +260,6 @@ fn hostcall_puts(
     let str = cstr.to_string_lossy();
     println!("{}", str);
     Box::new([])
-}
-
-fn resolve_imports<'wmod>(
-    store: &mut WasmStore<'wmod>,
-    wmod: &'wmod WasmModule,
-) -> Result<Vec<WasmExternVal>, WasmLinkError> {
-    let mut externvals = Vec::with_capacity(wmod.imports.len());
-    for import in &wmod.imports {
-        if let WasmImportDesc::Func(typeidx) = import.desc {
-            let ty = &wmod.types[typeidx.0 as usize];
-            if import.module_name.0.as_ref() == "env" && import.item_name.0.as_ref() == "puts" {
-                let funcaddr = store.alloc_hostfunc(ty, &hostcall_puts);
-                externvals.push(WasmExternVal::Func(funcaddr));
-                continue;
-            }
-        }
-        return Err(WasmLinkError::UnknownSymbol(
-            import.module_name.0.to_string(),
-            import.item_name.0.to_string(),
-        ));
-    }
-    Ok(externvals)
 }
 
 #[derive(Debug)]
@@ -315,8 +288,12 @@ fn run(args: &CliArgs) -> SemblanceResult {
         ref argv,
     }) = args.invoke
     {
-        let mut store = WasmStore::new();
-        let externvals = resolve_imports(&mut store, &module).map_err(SemblanceError::Link)?;
+        let linker = {
+            let mut linker = WasmLinker::new();
+            linker.register_hostfunc("env", "puts", &hostcall_puts);
+            linker
+        };
+        let (mut store, externvals) = linker.link(&module).map_err(SemblanceError::Link)?;
         let winst_id = store
             .instantiate(&module, &externvals)
             .map_err(SemblanceError::Instantiate)?;
