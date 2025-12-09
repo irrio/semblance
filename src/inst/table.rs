@@ -18,6 +18,16 @@ pub struct WasmElemAddr(u32);
 #[derive(Debug, Clone, Copy)]
 pub struct WasmDataAddr(u32);
 
+impl std::fmt::Display for WasmFuncAddr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_null() {
+            write!(f, "null")
+        } else {
+            write!(f, "{}", self.0)
+        }
+    }
+}
+
 impl WasmFuncAddr {
     pub fn is_null(self) -> bool {
         self.0 == 0

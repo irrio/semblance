@@ -351,9 +351,10 @@ impl Display for DynamicWasmResult {
                 WasmValueType::Vec(_vect) => {
                     todo!()
                 }
-                WasmValueType::Ref(_reft) => {
-                    todo!()
-                }
+                WasmValueType::Ref(reft) => match reft {
+                    WasmRefType::ExternRef => write!(f, "{}", unsafe { val.ref_.extern_.0 })?,
+                    WasmRefType::FuncRef => write!(f, "{}", unsafe { val.ref_.func })?,
+                },
             }
             if i < self.ty.len() - 1 {
                 write!(f, ", ")?;
