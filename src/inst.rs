@@ -191,7 +191,7 @@ pub struct WasmExportInst<'wmod> {
     pub value: WasmExternVal,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum WasmExternVal {
     Func(WasmFuncAddr),
     Table(WasmTableAddr),

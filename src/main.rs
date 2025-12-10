@@ -11,7 +11,10 @@ use semblance::{
         instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
     link::{WasmLinkError, WasmLinker},
-    module::{WasmMemIdx, WasmModule, WasmNumType, WasmReadError, WasmValueType},
+    module::{
+        WasmFuncType, WasmMemIdx, WasmModule, WasmNumType, WasmReadError, WasmResultType,
+        WasmValueType,
+    },
 };
 
 const HELP_TEXT: &'static str = "
@@ -262,6 +265,13 @@ fn hostcall_puts(
     Box::new([])
 }
 
+fn hostcall_puts_type() -> WasmFuncType {
+    WasmFuncType {
+        input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+        output_type: WasmResultType(Box::new([])),
+    }
+}
+
 #[derive(Debug)]
 #[allow(dead_code)]
 enum SemblanceError {
@@ -288,11 +298,10 @@ fn run(args: &CliArgs) -> SemblanceResult {
         ref argv,
     }) = args.invoke
     {
-        let linker = {
-            let mut linker = WasmLinker::new();
-            linker.register_hostfunc("env", "puts", &hostcall_puts);
-            linker
-        };
+        let linker = WasmLinker::new().with_host_module(
+            "env".to_string(),
+            &[("puts", hostcall_puts_type(), &hostcall_puts)],
+        );
         let (mut store, externvals) = linker.link(&module).map_err(SemblanceError::Link)?;
         let winst_id = store
             .instantiate(&module, &externvals)
