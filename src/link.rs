@@ -2,13 +2,14 @@ use crate::{
     inst::{WasmExternVal, WasmHostFunc, WasmStore, instantiate::WasmInstantiationError},
     module::{WasmFuncType, WasmModule},
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, path::Path};
 
 #[derive(Debug)]
 #[allow(dead_code)]
 pub enum WasmLinkError {
     UnknownModule(String),
     UnknownSymbol(String, String),
+    UnableToInferModuleNameFromPath(String),
     DependencyInstantiation {
         modname: String,
         err: WasmInstantiationError,
@@ -16,6 +17,14 @@ pub enum WasmLinkError {
 }
 
 pub type WasmLinkResult<T> = Result<T, WasmLinkError>;
+
+pub fn infer_module_name_from_path(path: &Path) -> WasmLinkResult<String> {
+    path.file_prefix()
+        .map(|os| os.to_string_lossy().to_string())
+        .ok_or_else(|| {
+            WasmLinkError::UnableToInferModuleNameFromPath(path.to_string_lossy().to_string())
+        })
+}
 
 struct HostModule {
     funcs: HashMap<&'static str, (WasmFuncType, WasmHostFunc)>,

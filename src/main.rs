@@ -10,7 +10,7 @@ use semblance::{
         DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
         instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
-    link::{WasmLinkError, WasmLinker},
+    link::{WasmLinkError, WasmLinker, infer_module_name_from_path},
     module::{
         WasmFuncType, WasmMemIdx, WasmModule, WasmNumType, WasmReadError, WasmResultType,
         WasmValueType,
@@ -23,6 +23,7 @@ semblance <MODULE> [OPTIONS]
 Options:
     -h, --help                      Print this help text
     -I, --invoke <FN> [ARGS...]     Invoke an exported function
+    -L, --link <MODULE>[ as ALIAS]  Load an additional module to be processed by the linker
     --assert-return [VALUES...]     Assert that the invoked function returns a specific set of values
     --assert-trap [MESSAGE]         Assert that the invoked function traps
     --assert-invalid                Assert that the module does not pass validation
@@ -32,6 +33,7 @@ Options:
 #[derive(Debug)]
 struct CliArgs {
     pub module_path: PathBuf,
+    pub link: Vec<LinkArgs>,
     pub invoke: Option<InvokeArgs>,
     pub assert: Option<Assertion>,
 }
@@ -50,9 +52,16 @@ struct InvokeArgs {
     pub argv: Vec<String>,
 }
 
+#[derive(Debug)]
+struct LinkArgs {
+    name: Option<String>,
+    module_path: PathBuf,
+}
+
 enum CliFlag<'s> {
     Module(PathBuf),
     Invoke(Option<InvokeArgs>),
+    Link(Option<LinkArgs>),
     Help,
     Noop,
     Unknown(&'s str),
@@ -71,6 +80,10 @@ fn parse_flag<'a>(argv: &'a [&'a str]) -> (CliFlag<'a>, &'a [&'a str]) {
         ["-I" | "--invoke", rest @ ..] => {
             let (i, rest) = parse_invoke_args(rest);
             (CliFlag::Invoke(i), rest)
+        }
+        ["-L" | "--link", rest @ ..] => {
+            let (link_args, rest) = parse_link_args(rest);
+            (CliFlag::Link(link_args), rest)
         }
         ["--assert-return", rest @ ..] => {
             let (vals, rest) = parse_assert_return_vals(rest);
@@ -102,6 +115,29 @@ fn parse_invoke_args<'a>(argv: &'a [&'a str]) -> (Option<InvokeArgs>, &'a [&'a s
         )
     } else {
         (None, rest)
+    }
+}
+
+fn parse_link_args<'a>(argv: &'a [&'a str]) -> (Option<LinkArgs>, &'a [&'a str]) {
+    match argv {
+        [path_str, rest @ ..] => {
+            let (alias, rest) = parse_link_alias(rest);
+            (
+                Some(LinkArgs {
+                    name: alias,
+                    module_path: PathBuf::from(path_str),
+                }),
+                rest,
+            )
+        }
+        [] => (None, argv),
+    }
+}
+
+fn parse_link_alias<'a>(argv: &'a [&'a str]) -> (Option<String>, &'a [&'a str]) {
+    match argv {
+        ["as", alias, rest @ ..] => (Some((*alias).to_owned()), rest),
+        _ => (None, argv),
     }
 }
 
@@ -142,6 +178,7 @@ impl CliArgs {
 
         let mut help = false;
         let mut module_path = None;
+        let mut link = vec![];
         let mut invoke = None;
         let mut assert = None;
 
@@ -159,6 +196,14 @@ impl CliArgs {
                         invoke = Some(i)
                     } else {
                         eprintln!("--invoke missing <FN>");
+                        exit();
+                    }
+                }
+                CliFlag::Link(l) => {
+                    if let Some(l) = l {
+                        link.push(l);
+                    } else {
+                        eprintln!("--link missing <MODULE>");
                         exit();
                     }
                 }
@@ -183,6 +228,7 @@ impl CliArgs {
         if let Some(module_path) = module_path {
             CliArgs {
                 module_path,
+                link,
                 invoke,
                 assert,
             }
@@ -298,10 +344,19 @@ fn run(args: &CliArgs) -> SemblanceResult {
         ref argv,
     }) = args.invoke
     {
-        let linker = WasmLinker::new().with_host_module(
+        let mut linker = WasmLinker::new().with_host_module(
             "env".to_string(),
             &[("puts", hostcall_puts_type(), &hostcall_puts)],
         );
+        for link_arg in &args.link {
+            let module = WasmModule::read(&link_arg.module_path).map_err(SemblanceError::Read)?;
+            let modname = if let Some(modname) = &link_arg.name {
+                modname.clone()
+            } else {
+                infer_module_name_from_path(&link_arg.module_path).map_err(SemblanceError::Link)?
+            };
+            linker = linker.with_module(modname, module);
+        }
         let (mut store, externvals) = linker.link(&module).map_err(SemblanceError::Link)?;
         let winst_id = store
             .instantiate(&module, &externvals)
