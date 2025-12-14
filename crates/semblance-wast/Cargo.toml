@@ -1,0 +1,9 @@
+[package]
+name = "semblance-wast"
+version = "0.1.0"
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]

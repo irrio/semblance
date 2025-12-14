@@ -5,3 +5,7 @@ version = 4
 [[package]]
 name = "semblance"
 version = "0.1.0"
+
+[[package]]
+name = "semblance-wast"
+version = "0.1.0"
