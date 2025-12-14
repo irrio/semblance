@@ -1,6 +1,10 @@
-[package]
-name = "semblance"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["crates/*"]
+default-members = ["crates/semblance"]
+resolver = "3"
 
-[dependencies]
+[workspace.package]
+homepage = "https://github.com/irrio/semblance"
+repository = "https://github.com/irrio/semblance"
+authors = ["Taylor Hogge <taylor@irreducible.io>"]
+edition = "2024"
