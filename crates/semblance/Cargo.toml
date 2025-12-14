@@ -1,6 +1,9 @@
 [package]
 name = "semblance"
 version = "0.1.0"
-edition = "2024"
+homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+edition.workspace = true
 
 [dependencies]
