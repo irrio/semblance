@@ -69,11 +69,7 @@ macro_rules! invoke {
     };
 }
 
-pub fn exec<'wmod>(
-    stack: &mut WasmStack,
-    store: &mut WasmStore<'wmod>,
-    expr: &WasmExpr,
-) -> Result<(), WasmTrap> {
+pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Result<(), WasmTrap> {
     let mut ip: *const WasmInstruction = &expr[0];
     loop {
         use WasmInstructionRepr::*;
@@ -925,7 +921,7 @@ pub fn exec<'wmod>(
                 let winst_id = stack.current_frame().winst_id;
                 let tableaddr = store.instances.resolve(winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve(tableaddr);
-                let ft_expect = &store.instances.resolve(winst_id).types[type_idx.0 as usize];
+                let ft_expect = &store.instances.resolve(winst_id).wmod.types[type_idx.0 as usize];
                 let i = unsafe { stack.pop_value().num.i32 } as usize;
                 if i >= table.elems.len() {
                     return Err(WasmTrap {});
@@ -935,7 +931,7 @@ pub fn exec<'wmod>(
                     return Err(WasmTrap {});
                 }
                 let func = store.funcs.resolve(unsafe { r.func });
-                let ft_actual = func.type_;
+                let ft_actual = &*func.type_;
                 if ft_actual != ft_expect {
                     return Err(WasmTrap {});
                 }

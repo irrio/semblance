@@ -21,6 +21,12 @@ pub enum WasmReadError {
     Validation(WasmValidationError),
 }
 
+#[derive(Debug)]
+pub enum WasmFromBytesError {
+    Decode(WasmDecodeError),
+    Validation(WasmValidationError),
+}
+
 impl repr::WasmModule {
     pub fn read(path: &Path) -> Result<Self, WasmReadError> {
         let mut f = File::open(path).map_err(WasmReadError::Io)?;
@@ -29,5 +35,10 @@ impl repr::WasmModule {
         let bytes = buf.into_boxed_slice();
         let wmod = bin::decode(&bytes).map_err(WasmReadError::Decode)?;
         validate(wmod).map_err(WasmReadError::Validation)
+    }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, WasmFromBytesError> {
+        let wmod = bin::decode(&bytes).map_err(WasmFromBytesError::Decode)?;
+        validate(wmod).map_err(WasmFromBytesError::Validation)
     }
 }

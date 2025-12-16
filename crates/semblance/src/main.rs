@@ -3,11 +3,12 @@ use std::{
     ffi::{CStr, c_char},
     num::{ParseFloatError, ParseIntError},
     path::PathBuf,
+    rc::Rc,
 };
 
 use semblance::{
     inst::{
-        DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
+        DynamicWasmResult, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
         instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
     link::{WasmLinkError, WasmLinker, infer_module_name_from_path},
@@ -355,25 +356,16 @@ fn run(args: &CliArgs) -> SemblanceResult {
             } else {
                 infer_module_name_from_path(&link_arg.module_path).map_err(SemblanceError::Link)?
             };
-            linker = linker.with_module(modname, module);
+            linker = linker.with_module(modname, Rc::new(module));
         }
         let (mut store, externvals) = linker.link(&module).map_err(SemblanceError::Link)?;
         let winst_id = store
-            .instantiate(&module, &externvals)
+            .instantiate(Rc::new(module), &externvals)
             .map_err(SemblanceError::Instantiate)?;
         let funcaddr = store
             .instances
             .resolve(winst_id)
-            .exports
-            .iter()
-            .find_map(|exp| {
-                if exp.name == fn_name {
-                    if let WasmExternVal::Func(funcaddr) = exp.value {
-                        return Some(funcaddr);
-                    }
-                }
-                None
-            })
+            .resolve_export_fn_by_name(fn_name)
             .ok_or_else(|| {
                 SemblanceError::Args(ArgumentError::ExportNotFound(fn_name.to_string()))
             })?;

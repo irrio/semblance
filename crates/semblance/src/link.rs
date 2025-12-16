@@ -2,7 +2,7 @@ use crate::{
     inst::{WasmExternVal, WasmHostFunc, WasmStore, instantiate::WasmInstantiationError},
     module::{WasmFuncType, WasmModule},
 };
-use std::{collections::HashMap, path::Path};
+use std::{collections::HashMap, path::Path, rc::Rc};
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -31,29 +31,15 @@ struct HostModule {
 }
 
 enum LinkerEntry {
-    Wasm(WasmModule),
+    Wasm(Rc<WasmModule>),
     Host(HostModule),
-}
-
-enum LinkerEntryRef<'a> {
-    Wasm(&'a WasmModule),
-    Host(&'a HostModule),
-}
-
-impl LinkerEntry {
-    fn as_ref<'a>(&'a self) -> LinkerEntryRef<'a> {
-        match self {
-            LinkerEntry::Wasm(wasm) => LinkerEntryRef::Wasm(wasm),
-            LinkerEntry::Host(host) => LinkerEntryRef::Host(host),
-        }
-    }
 }
 
 pub struct WasmLinker {
     modules: HashMap<String, LinkerEntry>,
 }
 
-impl<'l> WasmLinker {
+impl WasmLinker {
     pub fn new() -> Self {
         WasmLinker {
             modules: HashMap::new(),
@@ -74,15 +60,12 @@ impl<'l> WasmLinker {
         self
     }
 
-    pub fn with_module(mut self, modname: String, module: WasmModule) -> Self {
+    pub fn with_module(mut self, modname: String, module: Rc<WasmModule>) -> Self {
         self.modules.insert(modname, LinkerEntry::Wasm(module));
         self
     }
 
-    pub fn link<'wmod: 'l>(
-        &'l self,
-        wmod: &'wmod WasmModule,
-    ) -> WasmLinkResult<(WasmStore<'l>, Vec<WasmExternVal>)> {
+    pub fn link(&self, wmod: &WasmModule) -> WasmLinkResult<(WasmStore, Vec<WasmExternVal>)> {
         let mut store = WasmStore::new();
         let order = {
             let mut depgraph = WasmDependencyGraph::new();
@@ -103,22 +86,18 @@ impl<'l> WasmLinker {
         };
         let mut env = HashMap::<(&str, &str), WasmExternVal>::new();
         for modname in &order {
-            let entry = if modname.is_empty() {
-                LinkerEntryRef::Wasm(wmod)
-            } else {
-                self.modules
-                    .get(modname)
-                    .map(|e| e.as_ref())
-                    .ok_or(WasmLinkError::UnknownModule(modname.clone()))?
-            };
+            let entry = self
+                .modules
+                .get(modname)
+                .ok_or(WasmLinkError::UnknownModule(modname.clone()))?;
             match entry {
-                LinkerEntryRef::Host(hostmod) => {
+                LinkerEntry::Host(hostmod) => {
                     for (name, (functype, func)) in &hostmod.funcs {
                         let funcaddr = store.alloc_hostfunc(functype, *func);
                         env.insert((&modname, name), WasmExternVal::Func(funcaddr));
                     }
                 }
-                LinkerEntryRef::Wasm(wmod) => {
+                LinkerEntry::Wasm(wmod) => {
                     let mut externvals = Vec::with_capacity(wmod.imports.len());
                     for import in &wmod.imports {
                         externvals.push(
@@ -131,14 +110,15 @@ impl<'l> WasmLinker {
                                 })?,
                         );
                     }
-                    let winst_id = store.instantiate(wmod, &externvals).map_err(|e| {
+                    let winst_id = store.instantiate(wmod.clone(), &externvals).map_err(|e| {
                         WasmLinkError::DependencyInstantiation {
                             modname: modname.to_string(),
                             err: e,
                         }
                     })?;
-                    for export in &store.instances.resolve(winst_id).exports {
-                        env.insert((modname, export.name), export.value);
+                    let winst = store.instances.resolve(winst_id);
+                    for (i, export) in wmod.exports.iter().enumerate() {
+                        env.insert((modname, &export.name.0), winst.exports[i]);
                     }
                 }
             }

@@ -17,6 +17,25 @@ pub struct WasmModuleRepr<TWasmInstruction> {
     pub customs: Box<[WasmCustom]>,
 }
 
+impl<TWasmInstruction> WasmModuleRepr<TWasmInstruction> {
+    pub fn empty() -> Self {
+        WasmModuleRepr {
+            version: 0,
+            types: Box::new([]),
+            funcs: Box::new([]),
+            tables: Box::new([]),
+            mems: Box::new([]),
+            globals: Box::new([]),
+            elems: Box::new([]),
+            datas: Box::new([]),
+            start: None,
+            imports: Box::new([]),
+            exports: Box::new([]),
+            customs: Box::new([]),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub struct WasmTypeIdx(pub u32);
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

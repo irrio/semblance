@@ -144,23 +144,23 @@ pub trait Addressable {
     type Addr: ToIdx + FromIdx;
 }
 
-impl<'wmod> Addressable for WasmModuleInst<'wmod> {
+impl Addressable for WasmModuleInst {
     type Addr = WasmInstanceAddr;
 }
 
-impl<'wmod> Addressable for WasmFuncInst<'wmod> {
+impl Addressable for WasmFuncInst {
     type Addr = WasmFuncAddr;
 }
 
-impl<'wmod> Addressable for WasmTableInst<'wmod> {
+impl Addressable for WasmTableInst {
     type Addr = WasmTableAddr;
 }
 
-impl<'wmod> Addressable for WasmMemInst<'wmod> {
+impl Addressable for WasmMemInst {
     type Addr = WasmMemAddr;
 }
 
-impl<'wmod> Addressable for WasmGlobalInst<'wmod> {
+impl Addressable for WasmGlobalInst {
     type Addr = WasmGlobalAddr;
 }
 
@@ -168,7 +168,7 @@ impl Addressable for WasmElemInst {
     type Addr = WasmElemAddr;
 }
 
-impl<'wmod> Addressable for WasmDataInst<'wmod> {
+impl Addressable for WasmDataInst {
     type Addr = WasmDataAddr;
 }
 

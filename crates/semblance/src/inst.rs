@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, ops::Deref, rc::Rc};
 
 use table::{
     StoreTable, WasmDataAddr, WasmElemAddr, WasmFuncAddr, WasmGlobalAddr, WasmInstanceAddr,
@@ -122,15 +122,35 @@ pub struct WasmFrame {
     pub winst_id: WasmInstanceAddr,
 }
 
-pub struct WasmModuleInst<'wmod> {
-    pub types: &'wmod [WasmFuncType],
+pub struct WasmModuleInst {
+    pub wmod: Rc<WasmModule>,
     pub funcaddrs: Box<[WasmFuncAddr]>,
     pub tableaddrs: Box<[WasmTableAddr]>,
     pub memaddrs: Box<[WasmMemAddr]>,
     pub globaladdrs: Box<[WasmGlobalAddr]>,
     pub elemaddrs: Box<[WasmElemAddr]>,
     pub dataaddrs: Box<[WasmDataAddr]>,
-    pub exports: Box<[WasmExportInst<'wmod>]>,
+    pub exports: Box<[WasmExternVal]>,
+}
+
+impl WasmModuleInst {
+    pub fn resolve_export_by_name(&self, name: &str) -> Option<WasmExternVal> {
+        for (i, export) in self.wmod.exports.iter().enumerate() {
+            if export.name.0.as_ref() == name {
+                return Some(self.exports[i]);
+            }
+        }
+        None
+    }
+
+    pub fn resolve_export_fn_by_name(&self, name: &str) -> Option<WasmFuncAddr> {
+        let externval = self.resolve_export_by_name(name);
+        if let Some(WasmExternVal::Func(funcaddr)) = externval {
+            Some(funcaddr)
+        } else {
+            None
+        }
+    }
 }
 
 pub trait WasmIdx {
@@ -180,15 +200,10 @@ impl WasmIdx for WasmDataIdx {
     }
 }
 
-impl<'wmod> WasmModuleInst<'wmod> {
+impl WasmModuleInst {
     pub fn addr_of<I: WasmIdx>(&self, idx: I) -> I::Addr {
         idx.resolve_addr(self)
     }
-}
-
-pub struct WasmExportInst<'wmod> {
-    pub name: &'wmod str,
-    pub value: WasmExternVal,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -199,17 +214,54 @@ pub enum WasmExternVal {
     Global(WasmGlobalAddr),
 }
 
-pub struct WasmStore<'wmod> {
-    pub instances: StoreTable<WasmModuleInst<'wmod>>,
-    pub funcs: StoreTable<WasmFuncInst<'wmod>>,
-    pub tables: StoreTable<WasmTableInst<'wmod>>,
-    pub mems: StoreTable<WasmMemInst<'wmod>>,
-    pub globals: StoreTable<WasmGlobalInst<'wmod>>,
-    pub elems: StoreTable<WasmElemInst>,
-    pub datas: StoreTable<WasmDataInst<'wmod>>,
+impl WasmExternVal {
+    pub fn kind(&self) -> WasmExternValKind {
+        match self {
+            WasmExternVal::Func(_) => WasmExternValKind::Func,
+            WasmExternVal::Table(_) => WasmExternValKind::Table,
+            WasmExternVal::Mem(_) => WasmExternValKind::Mem,
+            WasmExternVal::Global(_) => WasmExternValKind::Global,
+        }
+    }
 }
 
-impl<'wmod> WasmStore<'wmod> {
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub enum WasmExternValKind {
+    Func,
+    Table,
+    Mem,
+    Global,
+}
+
+pub struct ModuleRef<T: ?Sized>(*const T);
+
+impl<T: ?Sized> Deref for ModuleRef<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T: ?Sized> Clone for ModuleRef<T> {
+    fn clone(&self) -> Self {
+        ModuleRef(self.0)
+    }
+}
+
+impl<T: ?Sized> Copy for ModuleRef<T> {}
+
+pub struct WasmStore {
+    pub instances: StoreTable<WasmModuleInst>,
+    pub funcs: StoreTable<WasmFuncInst>,
+    pub tables: StoreTable<WasmTableInst>,
+    pub mems: StoreTable<WasmMemInst>,
+    pub globals: StoreTable<WasmGlobalInst>,
+    pub elems: StoreTable<WasmElemInst>,
+    pub datas: StoreTable<WasmDataInst>,
+}
+
+impl<'s> WasmStore {
     pub fn new() -> Self {
         WasmStore {
             instances: StoreTable::new(),
@@ -257,18 +309,18 @@ impl<'wmod> WasmStore<'wmod> {
 
     pub fn alloc_hostfunc(
         &mut self,
-        type_: &'wmod WasmFuncType,
+        type_: &'s WasmFuncType,
         hostfunc: WasmHostFunc,
     ) -> WasmFuncAddr {
         self.funcs.add(WasmFuncInst {
-            type_,
+            type_: ModuleRef(type_),
             impl_: WasmFuncImpl::Host { hostfunc },
         })
     }
 }
 
-pub struct WasmDataInst<'wmod> {
-    pub data: Option<&'wmod [u8]>,
+pub struct WasmDataInst {
+    pub data: Option<ModuleRef<[u8]>>,
 }
 
 pub struct WasmElemInst {
@@ -276,34 +328,34 @@ pub struct WasmElemInst {
     pub elem: Box<[WasmRefValue]>,
 }
 
-pub struct WasmGlobalInst<'wmod> {
-    pub type_: &'wmod WasmGlobalType,
+pub struct WasmGlobalInst {
+    pub type_: ModuleRef<WasmGlobalType>,
     pub val: WasmValue,
 }
 
-pub struct WasmMemInst<'wmod> {
-    pub type_: &'wmod WasmMemType,
+pub struct WasmMemInst {
+    pub type_: ModuleRef<WasmMemType>,
     pub data: Vec<u8>,
 }
 
-impl<'wmod> WasmMemInst<'wmod> {
+impl WasmMemInst {
     pub const PAGE_SIZE: usize = 65536;
 }
 
-pub struct WasmTableInst<'wmod> {
-    pub type_: &'wmod WasmTableType,
+pub struct WasmTableInst {
+    pub type_: ModuleRef<WasmTableType>,
     pub elems: Vec<WasmRefValue>,
 }
 
-pub struct WasmFuncInst<'wmod> {
-    pub type_: &'wmod WasmFuncType,
-    pub impl_: WasmFuncImpl<'wmod>,
+pub struct WasmFuncInst {
+    pub type_: ModuleRef<WasmFuncType>,
+    pub impl_: WasmFuncImpl,
 }
 
-pub enum WasmFuncImpl<'wmod> {
+pub enum WasmFuncImpl {
     Wasm {
         winst_id: WasmInstanceAddr,
-        func: &'wmod WasmFunc<WasmInstruction>,
+        func: ModuleRef<WasmFunc<WasmInstruction>>,
     },
     Host {
         hostfunc: WasmHostFunc,
