@@ -7,3 +7,5 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+semblance = { path = "../semblance" }
+wast = { version = "243.0.0", features = ["wasm-module"] }

@@ -162,24 +162,33 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(unsafe { a.num.i32.wrapping_mul(b.num.i32) });
             }
             I32DivS => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i32 / b.num.i32 });
+                let b = unsafe { stack.pop_value().num.i32 };
+                let a = unsafe { stack.pop_value().num.i32 };
+                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                stack.push_value(out);
             }
             I32DivU => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { (a.num.i32 as u32) / (b.num.i32 as u32) } as i32);
+                let b = unsafe { stack.pop_value().num.i32 } as u32;
+                let a = unsafe { stack.pop_value().num.i32 } as u32;
+                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                stack.push_value(out as i32);
             }
             I32RemS => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i32 % b.num.i32 });
+                let b = unsafe { stack.pop_value().num.i32 };
+                let a = unsafe { stack.pop_value().num.i32 };
+                if b == 0 {
+                    return Err(WasmTrap {});
+                }
+                stack.push_value(a.wrapping_rem(b));
             }
             I32RemU => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { (a.num.i32 as u32) % (b.num.i32 as u32) } as i32);
+                let b = unsafe { stack.pop_value().num.i32 } as u32;
+                let a = unsafe { stack.pop_value().num.i32 } as u32;
+                if b == 0 {
+                    return Err(WasmTrap {});
+                }
+                let out = a.wrapping_rem(b);
+                stack.push_value(out as i32);
             }
             I32And => {
                 let b = stack.pop_value();
@@ -197,19 +206,19 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(unsafe { a.num.i32 ^ b.num.i32 });
             }
             I32Shl => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i32 << b.num.i32 });
+                let b = unsafe { stack.pop_value().num.i32 };
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a.wrapping_shl(b as u32));
             }
             I32ShrS => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i32 >> b.num.i32 });
+                let b = unsafe { stack.pop_value().num.i32 };
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a.wrapping_shr(b as u32));
             }
             I32ShrU => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { (a.num.i32 as u32) >> (b.num.i32 as u32) } as i32);
+                let b = unsafe { stack.pop_value().num.i32 } as u32;
+                let a = unsafe { stack.pop_value().num.i32 } as u32;
+                stack.push_value((a.wrapping_shr(b)) as i32);
             }
             I32Rotl => {
                 let b = stack.pop_value();

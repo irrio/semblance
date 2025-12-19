@@ -151,6 +151,15 @@ impl WasmModuleInst {
             None
         }
     }
+
+    pub fn resolve_export_global_by_name(&self, name: &str) -> Option<WasmGlobalAddr> {
+        let externval = self.resolve_export_by_name(name);
+        if let Some(WasmExternVal::Global(globaladdr)) = externval {
+            Some(globaladdr)
+        } else {
+            None
+        }
+    }
 }
 
 pub trait WasmIdx {
