@@ -32,6 +32,7 @@ semblance <MODULE> [OPTIONS]
 Options:
     -h, --help                      Print this help text
     -I, --invoke <FN> [ARGS...]     Invoke an exported function
+    -L, --link <MODULE>[ as ALIAS]  Load an additional module to be processed by the linker
 ```
 
 Currently, the runtime provides an implementation of `void puts(char *str);` that
