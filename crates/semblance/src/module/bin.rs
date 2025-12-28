@@ -814,6 +814,7 @@ fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmInstructionRaw
         0x60 => Ok((F32Ge, bytes)),
         0x61 => Ok((F64Eq, bytes)),
         0x62 => Ok((F64Neq, bytes)),
+        0x63 => Ok((F64Lt, bytes)),
         0x64 => Ok((F64Gt, bytes)),
         0x65 => Ok((F64Le, bytes)),
         0x66 => Ok((F64Ge, bytes)),
