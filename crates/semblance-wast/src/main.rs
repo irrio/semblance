@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use wast::core::NanPattern;
 use wast::parser::{ParseBuffer, parse};
-use wast::token::{F32, Id};
+use wast::token::{F32, F64, Id};
 use wast::{QuoteWat, Wast, WastArg, WastDirective, WastExecute, WastInvoke, WastRet, Wat};
 
 #[derive(Debug)]
@@ -209,7 +209,10 @@ impl WastInterpreter {
                     assert_eq!(*ty, WasmValueType::Num(WasmNumType::F32));
                     assert_nan_pattern_32(nan_pattern, unsafe { val.num.f32 });
                 }
-                wast::core::WastRetCore::F64(nan_pattern) => todo!(),
+                wast::core::WastRetCore::F64(nan_pattern) => {
+                    assert_eq!(*ty, WasmValueType::Num(WasmNumType::F64));
+                    assert_nan_pattern_64(nan_pattern, unsafe { val.num.f64 });
+                }
                 wast::core::WastRetCore::V128(v128_pattern) => todo!(),
                 wast::core::WastRetCore::RefNull(heap_type) => todo!(),
                 wast::core::WastRetCore::RefExtern(_) => todo!(),
@@ -318,6 +321,14 @@ fn assert_nan_pattern_32(nan_pattern: &NanPattern<F32>, val: f32) {
         NanPattern::ArithmeticNan => assert!(val.is_nan()),
         NanPattern::CanonicalNan => assert!(val.is_nan()),
         NanPattern::Value(f) => assert_eq!(f32::from_bits(f.bits), val),
+    }
+}
+
+fn assert_nan_pattern_64(nan_pattern: &NanPattern<F64>, val: f64) {
+    match nan_pattern {
+        NanPattern::ArithmeticNan => assert!(val.is_nan()),
+        NanPattern::CanonicalNan => assert!(val.is_nan()),
+        NanPattern::Value(f) => assert_eq!(f64::from_bits(f.bits), val),
     }
 }
 
