@@ -320,7 +320,7 @@ fn assert_nan_pattern_32(nan_pattern: &NanPattern<F32>, val: f32) {
     match nan_pattern {
         NanPattern::ArithmeticNan => assert!(val.is_nan()),
         NanPattern::CanonicalNan => assert!(val.is_nan()),
-        NanPattern::Value(f) => assert_eq!(f32::from_bits(f.bits), val),
+        NanPattern::Value(f) => assert_eq!(f.bits, val.to_bits()),
     }
 }
 
@@ -328,7 +328,7 @@ fn assert_nan_pattern_64(nan_pattern: &NanPattern<F64>, val: f64) {
     match nan_pattern {
         NanPattern::ArithmeticNan => assert!(val.is_nan()),
         NanPattern::CanonicalNan => assert!(val.is_nan()),
-        NanPattern::Value(f) => assert_eq!(f64::from_bits(f.bits), val),
+        NanPattern::Value(f) => assert_eq!(f.bits, val.to_bits()),
     }
 }
 
