@@ -458,14 +458,26 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(unsafe { a.num.f32 / b.num.f32 });
             }
             F32Min => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.f32.min(b.num.f32) });
+                let b = unsafe { stack.pop_value().num.f32 };
+                let a = unsafe { stack.pop_value().num.f32 };
+                if a.is_nan() {
+                    stack.push_value(a);
+                } else if b.is_nan() {
+                    stack.push_value(b);
+                } else {
+                    stack.push_value(a.min(b));
+                }
             }
             F32Max => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.f32.max(b.num.f32) });
+                let b = unsafe { stack.pop_value().num.f32 };
+                let a = unsafe { stack.pop_value().num.f32 };
+                if a.is_nan() {
+                    stack.push_value(a);
+                } else if b.is_nan() {
+                    stack.push_value(b);
+                } else {
+                    stack.push_value(a.max(b));
+                }
             }
             F32CopySign => {
                 let b = stack.pop_value();

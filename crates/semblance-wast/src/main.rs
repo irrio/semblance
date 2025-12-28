@@ -7,8 +7,9 @@ use semblance::module::{WasmFromBytesError, WasmModule, WasmNumType, WasmValueTy
 use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
+use wast::core::NanPattern;
 use wast::parser::{ParseBuffer, parse};
-use wast::token::Id;
+use wast::token::{F32, Id};
 use wast::{QuoteWat, Wast, WastArg, WastDirective, WastExecute, WastInvoke, WastRet, Wat};
 
 #[derive(Debug)]
@@ -204,7 +205,10 @@ impl WastInterpreter {
                     assert_eq!(*ty, WasmValueType::Num(WasmNumType::I64));
                     assert_eq!(unsafe { val.num.i64 }, *i);
                 }
-                wast::core::WastRetCore::F32(nan_pattern) => todo!(),
+                wast::core::WastRetCore::F32(nan_pattern) => {
+                    assert_eq!(*ty, WasmValueType::Num(WasmNumType::F32));
+                    assert_nan_pattern_32(nan_pattern, unsafe { val.num.f32 });
+                }
                 wast::core::WastRetCore::F64(nan_pattern) => todo!(),
                 wast::core::WastRetCore::V128(v128_pattern) => todo!(),
                 wast::core::WastRetCore::RefNull(heap_type) => todo!(),
@@ -243,6 +247,7 @@ impl WastInterpreter {
         let funcaddr = winst
             .resolve_export_fn_by_name(wast_invoke.name)
             .expect("fn not found");
+        println!("invoking {}", wast_invoke.name);
         store.invoke(funcaddr, args)
     }
 
@@ -305,6 +310,14 @@ impl WastInterpreter {
             ty: Box::new([global.type_.val_type]),
             res: WasmResult(vec![global.val]),
         })
+    }
+}
+
+fn assert_nan_pattern_32(nan_pattern: &NanPattern<F32>, val: f32) {
+    match nan_pattern {
+        NanPattern::ArithmeticNan => assert!(val.is_nan()),
+        NanPattern::CanonicalNan => assert!(val.is_nan()),
+        NanPattern::Value(f) => assert_eq!(f32::from_bits(f.bits), val),
     }
 }
 

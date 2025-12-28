@@ -290,6 +290,13 @@ impl<'s> WasmStore {
     ) -> Result<DynamicWasmResult, WasmTrap> {
         let func = self.funcs.resolve(funcaddr);
         let ty = func.type_;
+        println!(
+            "invoke args {:?}",
+            DynamicWasmResult {
+                ty: ty.input_type.0.clone(),
+                res: WasmResult(Vec::from(args.clone()))
+            }
+        );
         match func.impl_ {
             WasmFuncImpl::Wasm { winst_id, func } => {
                 let mut stack = WasmStack::new();
