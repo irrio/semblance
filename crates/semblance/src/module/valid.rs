@@ -24,7 +24,7 @@ pub enum WasmValidationError {
     DuplicateExportName(String),
     MismatchedType {
         expected: WasmValueType,
-        actual: Option<WasmValueType>,
+        actual: Option<MaybeUntyped>,
     },
     MismatchedTableCopy {
         src: WasmRefType,
@@ -50,6 +50,12 @@ pub enum WasmValidationError {
 }
 
 pub type WasmValidationResult<T> = Result<T, WasmValidationError>;
+
+#[derive(Debug, Eq, PartialEq)]
+pub enum MaybeUntyped {
+    UnknownType,
+    KnownType(WasmValueType),
+}
 
 use context::*;
 
@@ -1031,7 +1037,9 @@ fn validate_instr(
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
             let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
-            stack.peek_result_type(&label_entry.label_types())?;
+            let label_types = label_entry.label_types();
+            stack.pop_result_type(label_types)?;
+            stack.push_result_type(label_types);
         }
         BreakTable {
             labels,
@@ -1057,7 +1065,8 @@ fn validate_instr(
                             actual: types.len(),
                         });
                     }
-                    stack.peek_result_type(types)?;
+                    stack.pop_result_type(types)?;
+                    stack.push_result_type(types);
                 }
                 stack.pop_result_type(&default_label_entry.label_types())?;
             }
@@ -1311,8 +1320,13 @@ mod context {
         }
 
         pub fn stack(&self) -> TypeStack {
-            let min_stack_depth = self.labels.0.last().map(|l| l.min_stack_depth).unwrap_or(0);
-            self.stack.with_min_depth(min_stack_depth)
+            let (min_stack_depth, unreachable) = self
+                .labels
+                .0
+                .last()
+                .map(|l| (l.min_stack_depth, l.unreachable))
+                .unwrap_or((0, false));
+            self.stack.with_control_data(min_stack_depth, unreachable)
         }
 
         pub fn pop_label(&mut self) -> WasmValidationResult<LabelEntry> {
@@ -1461,6 +1475,7 @@ mod context {
 pub struct TypeStack {
     stack: Rc<RefCell<Vec<WasmValueType>>>,
     min_depth: usize,
+    unreachable: bool,
 }
 
 impl TypeStack {
@@ -1468,13 +1483,15 @@ impl TypeStack {
         TypeStack {
             stack: Rc::new(RefCell::new(vec![])),
             min_depth: 0,
+            unreachable: false,
         }
     }
 
-    pub fn with_min_depth(&self, min_depth: usize) -> TypeStack {
+    pub fn with_control_data(&self, min_depth: usize, unreachable: bool) -> TypeStack {
         TypeStack {
             stack: self.stack.clone(),
             min_depth,
+            unreachable,
         }
     }
 
@@ -1488,30 +1505,33 @@ impl TypeStack {
         }
     }
 
-    fn pop_checked(&self) -> Option<WasmValueType> {
+    fn pop_checked(&self) -> Option<MaybeUntyped> {
         if self.depth() > self.min_depth {
-            self.stack.borrow_mut().pop()
+            self.stack.borrow_mut().pop().map(MaybeUntyped::KnownType)
+        } else if self.unreachable {
+            Some(MaybeUntyped::UnknownType)
         } else {
             None
         }
     }
 
-    pub fn pop_any(&mut self) -> WasmValidationResult<WasmValueType> {
+    pub fn pop_any(&mut self) -> WasmValidationResult<()> {
         self.pop_checked()
             .ok_or(WasmValidationError::MismatchedType {
                 actual: None,
                 // TODO: should be any type
                 expected: WasmValueType::Num(WasmNumType::I32),
-            })
+            })?;
+        Ok(())
     }
 
     pub fn pop_num_or_vec(&self) -> WasmValidationResult<WasmValueType> {
         match self.pop_checked() {
-            Some(t @ WasmValueType::Num(_)) => Ok(t),
-            Some(t @ WasmValueType::Vec(_)) => Ok(t),
+            Some(MaybeUntyped::KnownType(t @ WasmValueType::Num(_))) => Ok(t),
+            Some(MaybeUntyped::KnownType(t @ WasmValueType::Vec(_))) => Ok(t),
             actual => Err(WasmValidationError::MismatchedType {
                 actual,
-                // TODO: should be any type
+                // TODO: should be num|vec
                 expected: WasmValueType::Num(WasmNumType::I32),
             }),
         }
@@ -1519,14 +1539,15 @@ impl TypeStack {
 
     pub fn pop(&self, expected: WasmValueType) -> WasmValidationResult<()> {
         match self.pop_checked() {
-            Some(t) if t == expected => Ok(()),
+            Some(MaybeUntyped::KnownType(t)) if t == expected => Ok(()),
+            Some(MaybeUntyped::UnknownType) => Ok(()),
             actual => Err(WasmValidationError::MismatchedType { expected, actual }),
         }
     }
 
     pub fn pop_ref_type(&self) -> WasmValidationResult<()> {
         match self.pop_checked() {
-            Some(WasmValueType::Ref(_)) => Ok(()),
+            Some(MaybeUntyped::KnownType(WasmValueType::Ref(_))) => Ok(()),
             actual => Err(WasmValidationError::MismatchedType {
                 expected: WasmValueType::Ref(WasmRefType::FuncRef), // TODO represent this type better (any ref type)
                 actual,
@@ -1537,30 +1558,6 @@ impl TypeStack {
     pub fn pop_result_type(&self, result_type: &WasmResultType) -> WasmValidationResult<()> {
         for t in result_type.0.iter().rev() {
             self.pop(*t)?;
-        }
-        Ok(())
-    }
-
-    pub fn peek_result_type(&self, result_type: &WasmResultType) -> WasmValidationResult<()> {
-        let stack = self.stack.borrow();
-        let top = stack
-            .iter()
-            .skip(self.min_depth)
-            .rev()
-            .take(result_type.0.len());
-        if top.len() < result_type.0.len() {
-            return Err(WasmValidationError::MismatchedType {
-                expected: *result_type.0.last().unwrap(),
-                actual: None,
-            });
-        }
-        for (actual, expected) in top.zip(result_type.0.iter()) {
-            if *actual != *expected {
-                return Err(WasmValidationError::MismatchedType {
-                    expected: *expected,
-                    actual: Some(*actual),
-                });
-            }
         }
         Ok(())
     }
