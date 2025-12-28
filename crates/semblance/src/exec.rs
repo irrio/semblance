@@ -1125,11 +1125,11 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let n = unsafe { stack.pop_value().num.i32 } as usize;
                 let s = unsafe { stack.pop_value().num.i32 } as usize;
                 let d = unsafe { stack.pop_value().num.i32 } as usize;
-                if s.max(d) + n > mem.data.len() {
+                if s.max(d).checked_add(n).ok_or(WasmTrap {})? > mem.data.len() {
                     return Err(WasmTrap {});
                 }
                 unsafe {
-                    std::ptr::copy(&mem.data[s], &mut mem.data[d], n);
+                    std::ptr::copy(mem.data.as_ptr().add(s), mem.data.as_mut_ptr().add(d), n);
                 }
             }
         }

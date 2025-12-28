@@ -93,7 +93,7 @@ impl WastInterpreter {
                 todo!("register")
             }
             Invoke(wast_invoke) => {
-                todo!("invoke")
+                let _ret = self.eval_invoke(wast_invoke).expect("trap!");
             }
             AssertTrap {
                 span,
@@ -250,7 +250,6 @@ impl WastInterpreter {
         let funcaddr = winst
             .resolve_export_fn_by_name(wast_invoke.name)
             .expect("fn not found");
-        println!("invoking {}", wast_invoke.name);
         store.invoke(funcaddr, args)
     }
 
