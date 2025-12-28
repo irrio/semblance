@@ -112,6 +112,12 @@ macro_rules! t {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WasmResultType(pub Box<[WasmValueType]>);
 
+impl WasmResultType {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct WasmFuncType {
     pub input_type: WasmResultType,

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use super::*;
 
@@ -37,8 +37,16 @@ pub enum WasmValidationError {
     TooManySelectTypes,
     InvalidReturn,
     InvalidCallIndirect,
-    UnmatchedEnd,
-    UnmatchedElse,
+    UnopenedBlock,
+    InvalidElse,
+    UnexpectedStackDepth {
+        expected: usize,
+        actual: usize,
+    },
+    InvalidBlockArity {
+        expected: usize,
+        actual: usize,
+    },
 }
 
 pub type WasmValidationResult<T> = Result<T, WasmValidationError>;
@@ -308,8 +316,8 @@ fn validate_func(
     func: &WasmFunc<WasmInstructionRaw>,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
-    let (output_type, expr_ctx) = ExprContext::from_func(&wmod_ctx, func)?;
-    validate_expr_with_result_type(&func.body, &output_type, &wmod_ctx, expr_ctx)
+    let expr_ctx = ExprContext::for_func(&wmod_ctx, func)?;
+    validate_instr_sequence(&func.body, &wmod_ctx, expr_ctx)
 }
 
 fn validate_data(
@@ -334,12 +342,10 @@ fn validate_active_data(
         .memories
         .get(mem_idx.0 as usize)
         .ok_or(WasmValidationError::InvalidMemIdx(mem_idx.0))?;
-    let output_type = WasmResultType(Box::new([t!(i32)]));
-    validate_expr_with_result_type(
+    validate_instr_sequence(
         offset_expr,
-        &output_type,
         wmod_ctx,
-        ExprContext::with_return_type(WasmValueType::Num(WasmNumType::I32)),
+        ExprContext::for_expr_of_type(t!(i32)),
     )?;
     validate_expr_is_const(offset_expr, wmod_ctx)
 }
@@ -348,13 +354,11 @@ fn validate_elem(
     elem: &WasmElem<WasmInstructionRaw>,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<()> {
-    let output_type = WasmResultType(Box::new([WasmValueType::Ref(elem.ref_type)]));
     for expr in &elem.init {
-        validate_expr_with_result_type(
+        validate_instr_sequence(
             expr,
-            &output_type,
             wmod_ctx,
-            ExprContext::with_return_type(WasmValueType::Ref(elem.ref_type)),
+            ExprContext::for_expr_of_type(WasmValueType::Ref(elem.ref_type)),
         )?;
         validate_expr_is_const(expr, wmod_ctx)?;
     }
@@ -377,12 +381,10 @@ fn validate_active_elem(
         .tables
         .get(table_idx.0 as usize)
         .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
-    let output_type = WasmResultType(Box::new([t!(i32)]));
-    validate_expr_with_result_type(
+    validate_instr_sequence(
         offset_expr,
-        &output_type,
         wmod_ctx,
-        ExprContext::with_return_type(t!(i32)),
+        ExprContext::for_expr_of_type(t!(i32)),
     )?;
     validate_expr_is_const(offset_expr, wmod_ctx)
 }
@@ -391,9 +393,8 @@ fn validate_global(
     global: &WasmGlobal<WasmInstructionRaw>,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<()> {
-    let output_type = WasmResultType(Box::new([global.global_type.val_type]));
-    let expr_context = ExprContext::with_return_type(global.global_type.val_type);
-    validate_expr_with_result_type(&global.init, &output_type, wmod_ctx, expr_context)?;
+    let expr_context = ExprContext::for_expr_of_type(global.global_type.val_type);
+    validate_instr_sequence(&global.init, wmod_ctx, expr_context)?;
     validate_expr_is_const(&global.init, wmod_ctx)
 }
 
@@ -447,8 +448,8 @@ fn validate_alignment(
 
 fn validate_load_instr(
     wmod_ctx: &ModuleContext,
+    expr_ctx: &mut ExprContext,
     memarg: &WasmMemArg,
-    stack: &mut TypeStack,
     t: WasmValueType,
     bits: Option<u32>,
 ) -> WasmValidationResult<()> {
@@ -457,6 +458,7 @@ fn validate_load_instr(
         .get(0)
         .ok_or(WasmValidationError::NoMemory)?;
     validate_alignment(memarg, t, bits)?;
+    let stack = expr_ctx.stack();
     stack.pop(t!(i32))?;
     stack.push(t);
     Ok(())
@@ -464,8 +466,8 @@ fn validate_load_instr(
 
 fn validate_store_instr(
     wmod_ctx: &ModuleContext,
+    expr_ctx: &mut ExprContext,
     memarg: &WasmMemArg,
-    stack: &mut TypeStack,
     t: WasmValueType,
     bits: Option<u32>,
 ) -> WasmValidationResult<()> {
@@ -474,6 +476,7 @@ fn validate_store_instr(
         .get(0)
         .ok_or(WasmValidationError::NoMemory)?;
     validate_alignment(memarg, t, bits)?;
+    let stack = expr_ctx.stack();
     stack.pop(t)?;
     stack.pop(t!(i32))?;
     Ok(())
@@ -506,148 +509,174 @@ fn validate_instr(
     op: &WasmInstructionRaw,
     wmod_ctx: &ModuleContext,
     expr_ctx: &mut ExprContext,
-    stack: &mut TypeStack,
     idx: WasmInstructionIdx,
 ) -> WasmValidationResult<()> {
     use WasmInstructionRepr::*;
     match op {
         // -- t.const -- //
         I32Const { .. } => {
-            stack.push(t!(i32));
+            expr_ctx.stack().push(t!(i32));
         }
         I64Const { .. } => {
-            stack.push(t!(i64));
+            expr_ctx.stack().push(t!(i64));
         }
         F32Const { .. } => {
-            stack.push(t!(f32));
+            expr_ctx.stack().push(t!(f32));
         }
         F64Const { .. } => {
-            stack.push(t!(f64));
+            expr_ctx.stack().push(t!(f64));
         }
         // -- t.unop -- //
         I32Clz | I32Ctz | I32Popcnt | I32Extend8S | I32Extend16S => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(t!(i32));
         }
         I64Clz | I64Ctz | I64Popcnt | I64Extend8S | I64Extend16S | I64Extend32S => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.push(t!(i64));
         }
         F32Abs | F32Neg | F32Sqrt | F32Ceil | F32Floor | F32Trunc | F32Nearest => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f32))?;
             stack.push(t!(f32));
         }
         F64Abs | F64Neg | F64Sqrt | F64Ceil | F64Floor | F64Trunc | F64Nearest => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f64))?;
             stack.push(t!(f64));
         }
         // -- t.binop -- //
         I32Add | I32Sub | I32Mul | I32DivS | I32DivU | I32RemS | I32RemU | I32And | I32Or
         | I32Xor | I32Shl | I32ShrS | I32ShrU | I32Rotl | I32Rotr => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.push(t!(i32));
         }
         I64Add | I64Sub | I64Mul | I64DivS | I64DivU | I64RemS | I64RemU | I64And | I64Or
         | I64Xor | I64Shl | I64ShrS | I64ShrU | I64Rotl | I64Rotr => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.pop(t!(i64))?;
             stack.push(t!(i64));
         }
         F32Add | F32Sub | F32Mul | F32Div | F32Min | F32Max | F32CopySign => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f32))?;
             stack.pop(t!(f32))?;
             stack.push(t!(f32));
         }
         F64Add | F64Sub | F64Mul | F64Div | F64Min | F64Max | F64CopySign => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f64))?;
             stack.pop(t!(f64))?;
             stack.push(t!(f64));
         }
         // -- t.testop -- //
         I32EqZ => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(t!(i32));
         }
         I64EqZ => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.push(t!(i32));
         }
         // -- t.relop -- //
         I32Eq | I32Neq | I32LtS | I32LtU | I32GtS | I32GtU | I32LeS | I32LeU | I32GeS | I32GeU => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.push(t!(i32));
         }
         I64Eq | I64Neq | I64LtS | I64LtU | I64GtS | I64GtU | I64LeS | I64LeU | I64GeS | I64GeU => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.pop(t!(i64))?;
             stack.push(t!(i32));
         }
         F32Eq | F32Neq | F32Lt | F32Gt | F32Le | F32Ge => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f32))?;
             stack.pop(t!(f32))?;
             stack.push(t!(i32));
         }
         F64Eq | F64Neq | F64Lt | F64Gt | F64Le | F64Ge => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f64))?;
             stack.pop(t!(f64))?;
             stack.push(t!(i32));
         }
         // -- t2.cvtop_t1_sx -- //
         I32WrapI64 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.push(t!(i32));
         }
         I32TruncF32S | I32TruncF32U | I32TruncSatF32S | I32TruncSatF32U | I32ReinterpretF32 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f32))?;
             stack.push(t!(i32));
         }
         I32TruncF64S | I32TruncF64U | I32TruncSatF64S | I32TruncSatF64U => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f64))?;
             stack.push(t!(i32));
         }
         I64ExtendI32S | I64ExtendI32U => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(t!(i64));
         }
         I64TruncF32S | I64TruncF32U | I64TruncSatF32S | I64TruncSatF32U => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f32))?;
             stack.push(t!(i64));
         }
         I64TruncF64S | I64TruncF64U | I64TruncSatF64S | I64TruncSatF64U | I64ReinterpretF64 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f64))?;
             stack.push(t!(i64));
         }
         F32ConvertI32S | F32ConvertI32U | F32ReinterpretI32 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(t!(f32));
         }
         F32ConvertI64S | F32ConvertI64U => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.push(t!(f32));
         }
         F32DemoteF64 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f64))?;
             stack.push(t!(f32));
         }
         F64ConvertI32S | F64ConvertI32U => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(t!(f64));
         }
         F64ConvertI64S | F64ConvertI64U | F64ReinterpretI64 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(i64))?;
             stack.push(t!(f64));
         }
         F64PromoteF32 => {
+            let stack = expr_ctx.stack();
             stack.pop(t!(f32))?;
             stack.push(t!(f64));
         }
         // -- reference instructions -- //
         RefNull { ref_type } => {
-            stack.push(WasmValueType::Ref(*ref_type));
+            expr_ctx.stack().push(WasmValueType::Ref(*ref_type));
         }
         RefIsNull => {
+            let stack = expr_ctx.stack();
             stack.pop_ref_type()?;
             stack.push(t!(i32));
         }
@@ -659,14 +688,15 @@ fn validate_instr(
             if !wmod_ctx.refs.contains(func_idx) {
                 return Err(WasmValidationError::InvalidFuncIdx(func_idx.0));
             }
-            stack.push(t!(funcref));
+            expr_ctx.stack().push(t!(funcref));
         }
         // -- parametric instructions -- //
         Drop => {
-            stack.pop_any()?;
+            expr_ctx.stack().pop_any()?;
         }
         Select { value_types } => match value_types.len() {
             0 => {
+                let stack = expr_ctx.stack();
                 stack.pop(t!(i32))?;
                 let t = stack.pop_num_or_vec()?;
                 stack.pop(t)?;
@@ -674,6 +704,7 @@ fn validate_instr(
             }
             1 => {
                 let t = value_types[0];
+                let stack = expr_ctx.stack();
                 stack.pop(t!(i32))?;
                 stack.pop(t)?;
                 stack.pop(t)?;
@@ -689,20 +720,21 @@ fn validate_instr(
                 .locals
                 .get(local_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidLocalIdx(local_idx.0))?;
-            stack.push(*local_type);
+            expr_ctx.stack().push(*local_type);
         }
         LocalSet { local_idx } => {
             let local_type = expr_ctx
                 .locals
                 .get(local_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidLocalIdx(local_idx.0))?;
-            stack.pop(*local_type)?;
+            expr_ctx.stack().pop(*local_type)?;
         }
         LocalTee { local_idx } => {
             let local_type = *expr_ctx
                 .locals
                 .get(local_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidLocalIdx(local_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop(local_type)?;
             stack.push(local_type);
         }
@@ -711,14 +743,14 @@ fn validate_instr(
                 .globals
                 .get(global_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidGlobalIdx(global_idx.0))?;
-            stack.push(global_type.val_type);
+            expr_ctx.stack().push(global_type.val_type);
         }
         GlobalSet { global_idx } => {
             let global_type = wmod_ctx
                 .globals
                 .get(global_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidGlobalIdx(global_idx.0))?;
-            stack.pop(global_type.val_type)?;
+            expr_ctx.stack().pop(global_type.val_type)?;
         }
         // -- table instruction -- //
         TableGet { table_idx } => {
@@ -726,6 +758,7 @@ fn validate_instr(
                 .tables
                 .get(table_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(WasmValueType::Ref(table.ref_type));
         }
@@ -735,6 +768,7 @@ fn validate_instr(
                 .get(table_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
             let t = WasmValueType::Ref(table.ref_type);
+            let stack = expr_ctx.stack();
             stack.pop(t)?;
             stack.pop(t!(i32))?;
             stack.push(t);
@@ -744,13 +778,14 @@ fn validate_instr(
                 .tables
                 .get(table_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
-            stack.push(t!(i32));
+            expr_ctx.stack().push(t!(i32));
         }
         TableGrow { table_idx } => {
             let table = wmod_ctx
                 .tables
                 .get(table_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(WasmValueType::Ref(table.ref_type))?;
             stack.push(t!(i32));
@@ -760,6 +795,7 @@ fn validate_instr(
                 .tables
                 .get(table_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(WasmValueType::Ref(table.ref_type))?;
             stack.pop(t!(i32))?;
@@ -779,6 +815,7 @@ fn validate_instr(
                     dst: dst_table.ref_type,
                 });
             }
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
@@ -801,6 +838,7 @@ fn validate_instr(
                     elem: *elem,
                 });
             }
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
@@ -813,86 +851,87 @@ fn validate_instr(
         }
         // -- memory instructions -- //
         I32Load { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i32), None)?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i32), None)?;
         }
         I64Load { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), None)?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), None)?;
         }
         F32Load { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(f32), None)?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(f32), None)?;
         }
         F64Load { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(f64), None)?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(f64), None)?;
         }
         I32Load8S { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i32), Some(8))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i32), Some(8))?;
         }
         I32Load8U { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i32), Some(8))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i32), Some(8))?;
         }
         I32Load16S { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i32), Some(16))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i32), Some(16))?;
         }
         I32Load16U { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i32), Some(16))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i32), Some(16))?;
         }
         I64Load8S { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), Some(8))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(8))?;
         }
         I64Load8U { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), Some(8))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(8))?;
         }
         I64Load16S { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), Some(16))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(16))?;
         }
         I64Load16U { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), Some(16))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(16))?;
         }
         I64Load32S { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), Some(32))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(32))?;
         }
         I64Load32U { memarg } => {
-            validate_load_instr(wmod_ctx, memarg, stack, t!(i64), Some(32))?;
+            validate_load_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(32))?;
         }
         I32Store { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i32), None)?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i32), None)?;
         }
         I64Store { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i64), None)?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i64), None)?;
         }
         F32Store { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(f32), None)?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(f32), None)?;
         }
         F64Store { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(f64), None)?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(f64), None)?;
         }
         I32Store8 { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i32), Some(8))?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i32), Some(8))?;
         }
         I32Store16 { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i32), Some(16))?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i32), Some(16))?;
         }
         I64Store8 { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i64), Some(8))?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(8))?;
         }
         I64Store16 { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i64), Some(16))?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(16))?;
         }
         I64Store32 { memarg } => {
-            validate_store_instr(wmod_ctx, memarg, stack, t!(i64), Some(32))?;
+            validate_store_instr(wmod_ctx, expr_ctx, memarg, t!(i64), Some(32))?;
         }
         MemorySize => {
             let _mem = wmod_ctx
                 .memories
                 .get(0)
                 .ok_or(WasmValidationError::NoMemory)?;
-            stack.push(t!(i32));
+            expr_ctx.stack().push(t!(i32));
         }
         MemoryGrow => {
             let _mem = wmod_ctx
                 .memories
                 .get(0)
                 .ok_or(WasmValidationError::NoMemory)?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.push(t!(i32));
         }
@@ -901,6 +940,7 @@ fn validate_instr(
                 .memories
                 .get(0)
                 .ok_or(WasmValidationError::NoMemory)?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
@@ -910,6 +950,7 @@ fn validate_instr(
                 .memories
                 .get(0)
                 .ok_or(WasmValidationError::NoMemory)?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
@@ -922,6 +963,7 @@ fn validate_instr(
             if data_idx.0 as usize >= wmod_ctx.datas {
                 return Err(WasmValidationError::InvalidDataIdx(data_idx.0));
             }
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
             stack.pop(t!(i32))?;
@@ -933,26 +975,39 @@ fn validate_instr(
         }
         // -- control instructions -- //
         Nop => {}
-        Unreachable => {}
+        Unreachable => expr_ctx.unreachable(),
         Block { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
+            expr_ctx.stack().pop_result_type(&func_type.input_type)?;
             expr_ctx.labels.push(LabelEntry {
-                ty: func_type.output_type.clone(),
+                ty: func_type,
                 idx,
+                opcode: LabelOpcode::Block,
+                min_stack_depth: expr_ctx.stack().depth(),
+                unreachable: false,
             });
         }
         Loop { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
-            expr_ctx.labels.push(LabelEntry {
-                ty: func_type.input_type.clone(),
+            expr_ctx.stack().pop_result_type(&func_type.input_type)?;
+            expr_ctx.push_label(LabelEntry {
+                ty: func_type,
                 idx,
+                opcode: LabelOpcode::Loop,
+                min_stack_depth: expr_ctx.stack().depth(),
+                unreachable: false,
             });
         }
         If { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
-            expr_ctx.labels.push(LabelEntry {
-                ty: func_type.output_type.clone(),
+            expr_ctx.stack().pop(t!(i32))?;
+            expr_ctx.stack().pop_result_type(&func_type.input_type)?;
+            expr_ctx.push_label(LabelEntry {
+                ty: func_type,
                 idx,
+                opcode: LabelOpcode::If,
+                min_stack_depth: expr_ctx.stack().depth(),
+                unreachable: false,
             });
         }
         Break { label_idx } => {
@@ -960,38 +1015,55 @@ fn validate_instr(
                 .labels
                 .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
-            stack.peek_result_type(&label_entry.ty)?;
+            expr_ctx
+                .stack()
+                .pop_result_type(label_entry.label_types())?;
+            expr_ctx.unreachable();
         }
         BreakIf { label_idx } => {
             let label_entry = expr_ctx
                 .labels
                 .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
-            stack.peek_result_type(&label_entry.ty)?;
+            stack.peek_result_type(&label_entry.label_types())?;
         }
         BreakTable {
             labels,
             default_label,
         } => {
-            stack.pop(t!(i32))?;
-            let default_label_entry = expr_ctx
-                .labels
-                .peek(*default_label)
-                .ok_or(WasmValidationError::InvalidLabelIdx(default_label.0))?;
-            stack.peek_result_type(&default_label_entry.ty)?;
-            for label_idx in labels {
-                let label_entry = expr_ctx
+            {
+                let stack = expr_ctx.stack();
+                stack.pop(t!(i32))?;
+                let default_label_entry = expr_ctx
                     .labels
-                    .peek(*label_idx)
-                    .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
-                stack.peek_result_type(&label_entry.ty)?;
+                    .peek(*default_label)
+                    .ok_or(WasmValidationError::InvalidLabelIdx(default_label.0))?;
+                let arity = default_label_entry.label_types().len();
+                for label_idx in labels {
+                    let label_entry = expr_ctx
+                        .labels
+                        .peek(*label_idx)
+                        .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
+                    let types = label_entry.label_types();
+                    if types.len() != arity {
+                        return Err(WasmValidationError::InvalidBlockArity {
+                            expected: arity,
+                            actual: types.len(),
+                        });
+                    }
+                    stack.peek_result_type(types)?;
+                }
+                stack.pop_result_type(&default_label_entry.label_types())?;
             }
+            expr_ctx.unreachable();
         }
         Return => match expr_ctx.ret {
             None => return Err(WasmValidationError::InvalidReturn),
             Some(ref result_type) => {
-                stack.pop_result_type(result_type)?;
+                expr_ctx.stack().pop_result_type(result_type)?;
+                expr_ctx.unreachable();
             }
         },
         Call { func_idx } => {
@@ -999,6 +1071,7 @@ fn validate_instr(
                 .funcs
                 .get(func_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidFuncIdx(func_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop_result_type(&func_type.input_type)?;
             stack.push_result_type(&func_type.output_type);
         }
@@ -1017,59 +1090,45 @@ fn validate_instr(
                 .types
                 .get(type_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidTypeIdx(type_idx.0))?;
+            let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             stack.pop_result_type(&func_type.input_type)?;
             stack.push_result_type(&func_type.output_type);
         }
         Else => {
-            let label_entry = expr_ctx
-                .labels
-                .peek(WasmLabelIdx(0))
-                .ok_or(WasmValidationError::UnmatchedElse)?;
+            let label_entry = expr_ctx.pop_label()?;
+            if label_entry.opcode != LabelOpcode::If {
+                return Err(WasmValidationError::InvalidElse);
+            }
+            expr_ctx.push_label(LabelEntry {
+                ty: label_entry.ty,
+                idx: label_entry.idx,
+                opcode: LabelOpcode::Else,
+                min_stack_depth: label_entry.min_stack_depth,
+                unreachable: false,
+            });
             expr_ctx.else_control_flow_map.insert(label_entry.idx, idx);
         }
         ExprEnd => {
-            let label_entry = expr_ctx
-                .labels
-                .pop()
-                .ok_or(WasmValidationError::UnmatchedEnd)?;
+            let label_entry = expr_ctx.pop_label()?;
+            expr_ctx
+                .stack()
+                .push_result_type(&label_entry.ty.output_type);
             expr_ctx.end_control_flow_map.insert(label_entry.idx, idx);
         }
     }
     Ok(())
 }
 
-fn validate_instr_sequence_with_type(
+fn validate_instr_sequence(
     instrs: &WasmExprRaw,
-    func_type: &WasmFuncType,
     wmod_ctx: &ModuleContext,
     mut expr_ctx: ExprContext,
 ) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
-    let mut stack = TypeStack::from_input_type(&func_type.input_type);
     for (i, op) in instrs.iter().enumerate() {
-        validate_instr(
-            op,
-            wmod_ctx,
-            &mut expr_ctx,
-            &mut stack,
-            WasmInstructionIdx(i as u32),
-        )?;
+        validate_instr(op, wmod_ctx, &mut expr_ctx, WasmInstructionIdx(i as u32))?;
     }
-    stack.pop_result_type(&func_type.output_type)?;
     Ok(expr_ctx.consume_control_flow_maps())
-}
-
-fn validate_expr_with_result_type(
-    expr: &WasmExprRaw,
-    result_type: &WasmResultType,
-    wmod_ctx: &ModuleContext,
-    expr_ctx: ExprContext,
-) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
-    let func_type = WasmFuncType {
-        input_type: WasmResultType(Box::new([])),
-        output_type: result_type.clone(),
-    };
-    validate_instr_sequence_with_type(expr, &func_type, wmod_ctx, expr_ctx)
 }
 
 fn validate_global_is_const(
@@ -1125,22 +1184,56 @@ mod context {
         pub refs: HashSet<WasmFuncIdx>,
     }
 
+    #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+    pub enum LabelOpcode {
+        Block,
+        If,
+        Else,
+        Loop,
+    }
+
     pub struct LabelEntry {
-        pub ty: WasmResultType,
+        pub ty: WasmFuncType,
         pub idx: WasmInstructionIdx,
+        pub opcode: LabelOpcode,
+        pub min_stack_depth: usize,
+        pub unreachable: bool,
+    }
+
+    impl LabelEntry {
+        pub fn label_types(&self) -> &WasmResultType {
+            if self.opcode == LabelOpcode::Loop {
+                &self.ty.input_type
+            } else {
+                &self.ty.output_type
+            }
+        }
     }
 
     pub struct LabelStack(Vec<LabelEntry>);
 
     impl LabelStack {
-        pub fn new() -> Self {
-            LabelStack(Vec::new())
-        }
-
         pub fn with_result_type(ty: WasmResultType) -> Self {
+            let ty = WasmFuncType {
+                input_type: WasmResultType(Box::new([])),
+                output_type: ty,
+            };
             LabelStack(vec![LabelEntry {
                 ty,
                 idx: WasmInstructionIdx(0),
+                opcode: LabelOpcode::Block,
+                min_stack_depth: 0,
+                unreachable: false,
+            }])
+        }
+
+        pub fn with_func_type(ty: WasmFuncType) -> Self {
+            LabelStack(vec![LabelEntry {
+                ty,
+                idx: WasmInstructionIdx(0),
+                opcode: LabelOpcode::Block,
+                min_stack_depth: 0,
+                unreachable: false,
             }])
         }
 
@@ -1152,6 +1245,14 @@ mod context {
             self.0.pop()
         }
 
+        pub fn peek_top(&self) -> Option<&LabelEntry> {
+            self.0.last()
+        }
+
+        pub fn peek_top_mut(&mut self) -> Option<&mut LabelEntry> {
+            self.0.last_mut()
+        }
+
         pub fn peek(&self, label_idx: WasmLabelIdx) -> Option<&LabelEntry> {
             let idx = (self.0.len() - 1) - label_idx.0 as usize;
             self.0.get(idx)
@@ -1159,6 +1260,7 @@ mod context {
     }
 
     pub struct ExprContext {
+        stack: TypeStack,
         pub locals: Vec<WasmValueType>,
         pub labels: LabelStack,
         pub ret: Option<WasmResultType>,
@@ -1166,23 +1268,11 @@ mod context {
         pub else_control_flow_map: ControlFlowMap,
     }
 
-    impl Default for ExprContext {
-        fn default() -> Self {
-            ExprContext {
-                locals: vec![],
-                labels: LabelStack::new(),
-                ret: None,
-                end_control_flow_map: HashMap::new(),
-                else_control_flow_map: HashMap::new(),
-            }
-        }
-    }
-
     impl ExprContext {
-        pub fn from_func<'wmod>(
+        pub fn for_func<'wmod>(
             wmod_ctx: &ModuleContext<'wmod>,
             wfunc: &'wmod WasmFunc<WasmInstructionRaw>,
-        ) -> WasmValidationResult<(WasmResultType, Self)> {
+        ) -> WasmValidationResult<Self> {
             let func_type = wmod_ctx
                 .types
                 .get(wfunc.type_idx.0 as usize)
@@ -1190,24 +1280,23 @@ mod context {
             let mut locals = vec![];
             locals.extend(func_type.input_type.0.iter());
             locals.extend(wfunc.locals.iter());
-            Ok((
-                func_type.output_type.clone(),
-                ExprContext {
-                    locals,
-                    labels: LabelStack::with_result_type(func_type.output_type.clone()),
-                    ret: Some(func_type.output_type.clone()),
-                    end_control_flow_map: HashMap::new(),
-                    else_control_flow_map: HashMap::new(),
-                },
-            ))
+            Ok(ExprContext {
+                locals,
+                stack: TypeStack::empty(),
+                labels: LabelStack::with_func_type(func_type.clone()),
+                ret: Some(func_type.output_type.clone()),
+                end_control_flow_map: HashMap::new(),
+                else_control_flow_map: HashMap::new(),
+            })
         }
 
-        pub fn with_return_type(val_type: WasmValueType) -> Self {
+        pub fn for_expr_of_type(val_type: WasmValueType) -> Self {
             let return_type = WasmResultType(vec![val_type].into_boxed_slice());
             ExprContext {
+                stack: TypeStack::empty(),
                 locals: vec![],
                 labels: LabelStack::with_result_type(return_type.clone()),
-                ret: Some(return_type),
+                ret: None,
                 end_control_flow_map: HashMap::new(),
                 else_control_flow_map: HashMap::new(),
             }
@@ -1215,6 +1304,40 @@ mod context {
 
         pub fn consume_control_flow_maps(self) -> (ControlFlowMap, ControlFlowMap) {
             (self.end_control_flow_map, self.else_control_flow_map)
+        }
+
+        pub fn stack(&self) -> TypeStack {
+            let min_stack_depth = self.labels.0.last().map(|l| l.min_stack_depth).unwrap_or(0);
+            self.stack.with_min_depth(min_stack_depth)
+        }
+
+        pub fn pop_label(&mut self) -> WasmValidationResult<LabelEntry> {
+            let entry = self
+                .labels
+                .peek_top()
+                .ok_or(WasmValidationError::UnopenedBlock)?;
+            self.stack().pop_result_type(&entry.ty.output_type)?;
+            if self.stack.depth() != entry.min_stack_depth {
+                return Err(WasmValidationError::UnexpectedStackDepth {
+                    expected: entry.min_stack_depth,
+                    actual: self.stack.depth(),
+                });
+            }
+            Ok(self.labels.pop().unwrap())
+        }
+
+        pub fn push_label(&mut self, label_entry: LabelEntry) {
+            self.stack.push_result_type(&label_entry.ty.input_type);
+            self.labels.push(label_entry);
+        }
+
+        pub fn unreachable(&mut self) {
+            let label_entry = self.labels.peek_top_mut().expect("no label!");
+            self.stack
+                .stack
+                .borrow_mut()
+                .resize_with(label_entry.min_stack_depth, || t!(i32));
+            label_entry.unreachable = true;
         }
     }
 
@@ -1331,37 +1454,55 @@ mod context {
     }
 }
 
-pub struct TypeStack(Vec<WasmValueType>);
+pub struct TypeStack {
+    stack: Rc<RefCell<Vec<WasmValueType>>>,
+    min_depth: usize,
+}
 
 impl TypeStack {
-    pub fn from_input_type(input_type: &WasmResultType) -> Self {
-        let mut vec = Vec::with_capacity(input_type.0.len());
-        for t in &input_type.0 {
-            vec.push(*t);
+    pub fn empty() -> Self {
+        TypeStack {
+            stack: Rc::new(RefCell::new(vec![])),
+            min_depth: 0,
         }
-        TypeStack(vec)
     }
 
-    pub fn push(&mut self, t: WasmValueType) {
-        self.0.push(t)
+    pub fn with_min_depth(&self, min_depth: usize) -> TypeStack {
+        TypeStack {
+            stack: self.stack.clone(),
+            min_depth,
+        }
     }
 
-    pub fn push_result_type(&mut self, result_type: &WasmResultType) {
+    pub fn push(&self, t: WasmValueType) {
+        self.stack.borrow_mut().push(t)
+    }
+
+    pub fn push_result_type(&self, result_type: &WasmResultType) {
         for t in result_type.0.iter().rev() {
             self.push(*t);
         }
     }
 
-    pub fn pop_any(&mut self) -> WasmValidationResult<WasmValueType> {
-        self.0.pop().ok_or(WasmValidationError::MismatchedType {
-            actual: None,
-            // TODO: should be any type
-            expected: WasmValueType::Num(WasmNumType::I32),
-        })
+    fn pop_checked(&self) -> Option<WasmValueType> {
+        if self.depth() > self.min_depth {
+            self.stack.borrow_mut().pop()
+        } else {
+            None
+        }
     }
 
-    pub fn pop_num_or_vec(&mut self) -> WasmValidationResult<WasmValueType> {
-        match self.0.pop() {
+    pub fn pop_any(&mut self) -> WasmValidationResult<WasmValueType> {
+        self.pop_checked()
+            .ok_or(WasmValidationError::MismatchedType {
+                actual: None,
+                // TODO: should be any type
+                expected: WasmValueType::Num(WasmNumType::I32),
+            })
+    }
+
+    pub fn pop_num_or_vec(&self) -> WasmValidationResult<WasmValueType> {
+        match self.pop_checked() {
             Some(t @ WasmValueType::Num(_)) => Ok(t),
             Some(t @ WasmValueType::Vec(_)) => Ok(t),
             actual => Err(WasmValidationError::MismatchedType {
@@ -1372,15 +1513,15 @@ impl TypeStack {
         }
     }
 
-    pub fn pop(&mut self, expected: WasmValueType) -> WasmValidationResult<()> {
-        match self.0.pop() {
+    pub fn pop(&self, expected: WasmValueType) -> WasmValidationResult<()> {
+        match self.pop_checked() {
             Some(t) if t == expected => Ok(()),
             actual => Err(WasmValidationError::MismatchedType { expected, actual }),
         }
     }
 
-    pub fn pop_ref_type(&mut self) -> WasmValidationResult<()> {
-        match self.0.pop() {
+    pub fn pop_ref_type(&self) -> WasmValidationResult<()> {
+        match self.pop_checked() {
             Some(WasmValueType::Ref(_)) => Ok(()),
             actual => Err(WasmValidationError::MismatchedType {
                 expected: WasmValueType::Ref(WasmRefType::FuncRef), // TODO represent this type better (any ref type)
@@ -1389,15 +1530,26 @@ impl TypeStack {
         }
     }
 
-    pub fn pop_result_type(&mut self, result_type: &WasmResultType) -> WasmValidationResult<()> {
+    pub fn pop_result_type(&self, result_type: &WasmResultType) -> WasmValidationResult<()> {
         for t in result_type.0.iter().rev() {
             self.pop(*t)?;
         }
         Ok(())
     }
 
-    pub fn peek_result_type(&mut self, result_type: &WasmResultType) -> WasmValidationResult<()> {
-        let top = self.0.iter().rev().take(result_type.0.len());
+    pub fn peek_result_type(&self, result_type: &WasmResultType) -> WasmValidationResult<()> {
+        let stack = self.stack.borrow();
+        let top = stack
+            .iter()
+            .skip(self.min_depth)
+            .rev()
+            .take(result_type.0.len());
+        if top.len() < result_type.0.len() {
+            return Err(WasmValidationError::MismatchedType {
+                expected: *result_type.0.last().unwrap(),
+                actual: None,
+            });
+        }
         for (actual, expected) in top.zip(result_type.0.iter()) {
             if *actual != *expected {
                 return Err(WasmValidationError::MismatchedType {
@@ -1407,5 +1559,9 @@ impl TypeStack {
             }
         }
         Ok(())
+    }
+
+    pub fn depth(&self) -> usize {
+        self.stack.borrow().len()
     }
 }
