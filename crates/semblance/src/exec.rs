@@ -312,24 +312,32 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(unsafe { a.num.i64.wrapping_mul(b.num.i64) });
             }
             I64DivS => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i64 / b.num.i64 });
+                let b = unsafe { stack.pop_value().num.i64 };
+                let a = unsafe { stack.pop_value().num.i64 };
+                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                stack.push_value(out);
             }
             I64DivU => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { (a.num.i64 as u64) / (b.num.i64 as u64) } as i64);
+                let b = unsafe { stack.pop_value().num.i64 } as u64;
+                let a = unsafe { stack.pop_value().num.i64 } as u64;
+                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                stack.push_value(out as i64);
             }
             I64RemS => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i64 % b.num.i64 });
+                let b = unsafe { stack.pop_value().num.i64 };
+                let a = unsafe { stack.pop_value().num.i64 };
+                if b == 0 {
+                    return Err(WasmTrap {});
+                }
+                stack.push_value(a.wrapping_rem(b));
             }
             I64RemU => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { (a.num.i64 as u64) % (b.num.i64 as u64) } as i64);
+                let b = unsafe { stack.pop_value().num.i64 } as u64;
+                let a = unsafe { stack.pop_value().num.i64 } as u64;
+                if b == 0 {
+                    return Err(WasmTrap {});
+                }
+                stack.push_value(a.wrapping_rem(b) as i64);
             }
             I64And => {
                 let b = stack.pop_value();
@@ -347,19 +355,19 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(unsafe { a.num.i64 ^ b.num.i64 });
             }
             I64Shl => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i64 << b.num.i64 });
+                let b = unsafe { stack.pop_value().num.i64 };
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a.wrapping_shl(b as u32));
             }
             I64ShrS => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i64 >> b.num.i64 });
+                let b = unsafe { stack.pop_value().num.i64 };
+                let a = unsafe { stack.pop_value().num.i64 };
+                stack.push_value(a.wrapping_shr(b as u32));
             }
             I64ShrU => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { (a.num.i64 as u64) >> (b.num.i64 as u64) } as i64);
+                let b = unsafe { stack.pop_value().num.i64 } as u64;
+                let a = unsafe { stack.pop_value().num.i64 } as u64;
+                stack.push_value(a.wrapping_shr(b as u32) as i64);
             }
             I64Rotl => {
                 let b = stack.pop_value();

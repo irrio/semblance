@@ -176,9 +176,9 @@ impl WastInterpreter {
         WasmModule::from_bytes(&bytes)
     }
 
-    fn eval_assert_trap(&mut self, exec: &mut WastExecute, _message: &str) {
+    fn eval_assert_trap(&mut self, exec: &mut WastExecute, message: &str) {
         let wres = self.eval_execute(exec);
-        assert!(wres.is_err(), "failed to trap!");
+        assert!(wres.is_err(), "failed to trap! {}", message);
     }
 
     fn eval_assert_return(&mut self, exec: &mut WastExecute, results: &mut Vec<WastRet>) {
@@ -200,7 +200,10 @@ impl WastInterpreter {
                     assert_eq!(*ty, WasmValueType::Num(WasmNumType::I32));
                     assert_eq!(unsafe { val.num.i32 }, *i);
                 }
-                wast::core::WastRetCore::I64(_) => todo!(),
+                wast::core::WastRetCore::I64(i) => {
+                    assert_eq!(*ty, WasmValueType::Num(WasmNumType::I64));
+                    assert_eq!(unsafe { val.num.i64 }, *i);
+                }
                 wast::core::WastRetCore::F32(nan_pattern) => todo!(),
                 wast::core::WastRetCore::F64(nan_pattern) => todo!(),
                 wast::core::WastRetCore::V128(v128_pattern) => todo!(),
