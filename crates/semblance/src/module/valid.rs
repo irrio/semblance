@@ -398,12 +398,16 @@ fn validate_global(
     validate_expr_is_const(&global.init, wmod_ctx)
 }
 
+const MEM_RANGE: u32 = (2 as u32).pow(16);
+
 fn validate_mem(mem: &WasmMemType) -> WasmValidationResult<()> {
-    validate_limits_within_range(&mem.limits, u16::MAX as u32)
+    validate_limits_within_range(&mem.limits, MEM_RANGE)
 }
 
+const TABLE_RANGE: u32 = u32::MAX;
+
 fn validate_table(table: &WasmTableType) -> WasmValidationResult<()> {
-    validate_limits_within_range(&table.limits, u32::MAX - 1)
+    validate_limits_within_range(&table.limits, TABLE_RANGE)
 }
 
 fn validate_limits_within_range(limits: &WasmLimits, range: u32) -> WasmValidationResult<()> {
