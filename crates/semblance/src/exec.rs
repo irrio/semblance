@@ -15,9 +15,10 @@ macro_rules! mem_load {
         let i = unsafe { $stack.pop_value().num.i32 as u32 };
         let ea = (i + $memarg.offset) as usize;
         const N: usize = std::mem::size_of::<$t>();
-        let bytes = mem.data[ea..]
-            .first_chunk::<N>()
-            .expect("out of bounds memory access");
+        if ea + N > mem.data.len() {
+            return Err(WasmTrap {});
+        }
+        let bytes = mem.data[ea..].first_chunk::<N>().unwrap();
         let val = <$t>::from_le_bytes(*bytes);
         $stack.push_value(val as $t2);
     };
@@ -33,6 +34,9 @@ macro_rules! mem_store {
         let i = unsafe { $stack.pop_value().num.i32 as u32 };
         let ea = (i + $memarg.offset) as usize;
         const N: usize = std::mem::size_of::<$t2>();
+        if ea + N > mem.data.len() {
+            return Err(WasmTrap {});
+        }
         (&mut mem.data[ea..(ea + N)]).copy_from_slice(&(val as $t2).to_le_bytes());
     };
 }
@@ -62,10 +66,16 @@ macro_rules! invoke {
                     locals: locals.into_boxed_slice(),
                     winst_id,
                 });
-                $ip = &funcimpl.body[0];
-                continue;
+                goto!($ip, &funcimpl.body[0]);
             }
         }
+    };
+}
+
+macro_rules! goto {
+    ($ip:ident, $addr:expr) => {
+        $ip = $addr;
+        continue;
     };
 }
 
@@ -774,8 +784,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 if let Some(max) = table.type_.limits.max {
                     if sz + n > (max as usize) {
                         stack.push_value(-1i32);
-                        ip = unsafe { ip.add(1) };
-                        continue;
+                        goto!(ip, unsafe { ip.add(1) });
                     }
                 }
                 table.elems.reserve(n as usize);
@@ -873,7 +882,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             Nop => {}
             Block { block_type: _, imm } => {
                 stack.push_label(WasmLabel {
-                    instr: unsafe { ip.add(imm.0 as usize) },
+                    instr: unsafe { ip.add(imm.0 as usize + 1) },
                 });
             }
             Loop {
@@ -886,28 +895,27 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
                     stack.push_label(WasmLabel {
-                        instr: unsafe { ip.add(imm.end_off.0 as usize) },
+                        instr: unsafe { ip.add(imm.end_off.0 as usize + 1) },
                     });
                 } else {
                     if let Some(else_off) = imm.else_off {
-                        ip = unsafe { ip.add(else_off.0 as usize) };
                         stack.push_label(WasmLabel {
-                            instr: unsafe { ip.add(imm.end_off.0 as usize) },
+                            instr: unsafe { ip.add(imm.end_off.0 as usize + 1) },
                         });
+                        goto!(ip, unsafe { ip.add(else_off.0 as usize + 1) });
                     } else {
-                        ip = unsafe { ip.add(imm.end_off.0 as usize) };
+                        goto!(ip, unsafe { ip.add(imm.end_off.0 as usize + 1) });
                     }
                 }
             }
             Else => {
                 let label = stack.pop_label(WasmLabelIdx(0));
-                ip = label.instr;
+                goto!(ip, label.instr);
             }
             ExprEnd => match stack.pop_control() {
                 Some(ControlStackEntry::Frame(_frame)) => {
                     if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
-                        ip = label.instr;
-                        continue;
+                        goto!(ip, label.instr);
                     } else {
                         break;
                     }
@@ -917,15 +925,13 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             },
             Break { label_idx } => {
                 let label = stack.pop_label(*label_idx);
-                ip = label.instr;
-                continue;
+                goto!(ip, label.instr);
             }
             BreakIf { label_idx } => {
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
                     let label = stack.pop_label(*label_idx);
-                    ip = label.instr;
-                    continue;
+                    goto!(ip, label.instr);
                 }
             }
             BreakTable {
@@ -939,14 +945,12 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                     default_label
                 };
                 let label = stack.pop_label(*label_idx);
-                ip = label.instr;
-                continue;
+                goto!(ip, label.instr);
             }
             Return => {
                 stack.pop_frame();
                 if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
-                    ip = label.instr;
-                    continue;
+                    goto!(ip, label.instr);
                 } else {
                     break;
                 }
@@ -997,8 +1001,8 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             }
             Select { value_types: _ } => {
                 let c = unsafe { stack.pop_value().num.i32 };
-                let val1 = stack.pop_value();
                 let val2 = stack.pop_value();
+                let val1 = stack.pop_value();
                 if c != 0 {
                     stack.push_value(val1);
                 } else {
@@ -1096,16 +1100,19 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let winst = store.instances.resolve(frame.winst_id);
                 let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
                 let n_pages = unsafe { stack.pop_value().num.i32 } as usize;
-                let new_pages = (mem.data.len() / WasmMemInst::PAGE_SIZE) + n_pages;
+                let old_pages = mem.data.len() / WasmMemInst::PAGE_SIZE;
+                let new_pages = old_pages + n_pages;
                 if let Some(max) = mem.type_.limits.max
                     && new_pages > max as usize
                 {
                     stack.push_value(-1);
+                } else if new_pages > (2 as usize).pow(16) {
+                    stack.push_value(-1);
                 } else {
-                    stack.push_value(new_pages as i32);
+                    let n_bytes = n_pages * WasmMemInst::PAGE_SIZE;
+                    mem.data.extend(std::iter::repeat_n(0, n_bytes));
+                    stack.push_value(old_pages as i32);
                 }
-                let n_bytes = n_pages * WasmMemInst::PAGE_SIZE;
-                mem.data.extend(std::iter::repeat_n(0, n_bytes));
             }
             MemoryFill => {
                 let frame = stack.current_frame();

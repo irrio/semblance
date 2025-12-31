@@ -345,19 +345,25 @@ fn run(args: &CliArgs) -> SemblanceResult {
         ref argv,
     }) = args.invoke
     {
-        let mut linker = WasmLinker::new().with_host_module(
-            "env".to_string(),
-            &[("puts", hostcall_puts_type(), &hostcall_puts)],
-        );
-        for link_arg in &args.link {
-            let module = WasmModule::read(&link_arg.module_path).map_err(SemblanceError::Read)?;
-            let modname = if let Some(modname) = &link_arg.name {
-                modname.clone()
-            } else {
-                infer_module_name_from_path(&link_arg.module_path).map_err(SemblanceError::Link)?
-            };
-            linker = linker.with_module(modname, Rc::new(module));
-        }
+        let linker = {
+            let mut linker = WasmLinker::new();
+            linker.add_host_module(
+                "env".to_string(),
+                &[("puts", hostcall_puts_type(), &hostcall_puts)],
+            );
+            for link_arg in &args.link {
+                let module =
+                    WasmModule::read(&link_arg.module_path).map_err(SemblanceError::Read)?;
+                let modname = if let Some(modname) = &link_arg.name {
+                    modname.clone()
+                } else {
+                    infer_module_name_from_path(&link_arg.module_path)
+                        .map_err(SemblanceError::Link)?
+                };
+                linker.add_module(modname, Rc::new(module));
+            }
+            linker
+        };
         let (mut store, externvals) = linker.link(&module).map_err(SemblanceError::Link)?;
         let winst_id = store
             .instantiate(Rc::new(module), &externvals)

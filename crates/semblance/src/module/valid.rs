@@ -991,7 +991,7 @@ fn validate_instr(
             expr_ctx.stack().pop_result_type(&func_type.input_type)?;
             expr_ctx.labels.push(LabelEntry {
                 ty: func_type,
-                idx,
+                idx: Some(idx),
                 opcode: LabelOpcode::Block,
                 min_stack_depth: expr_ctx.stack().depth(),
                 unreachable: false,
@@ -1002,7 +1002,7 @@ fn validate_instr(
             expr_ctx.stack().pop_result_type(&func_type.input_type)?;
             expr_ctx.push_label(LabelEntry {
                 ty: func_type,
-                idx,
+                idx: Some(idx),
                 opcode: LabelOpcode::Loop,
                 min_stack_depth: expr_ctx.stack().depth(),
                 unreachable: false,
@@ -1014,7 +1014,7 @@ fn validate_instr(
             expr_ctx.stack().pop_result_type(&func_type.input_type)?;
             expr_ctx.push_label(LabelEntry {
                 ty: func_type,
-                idx,
+                idx: Some(idx),
                 opcode: LabelOpcode::If,
                 min_stack_depth: expr_ctx.stack().depth(),
                 unreachable: false,
@@ -1120,14 +1120,18 @@ fn validate_instr(
                 min_stack_depth: label_entry.min_stack_depth,
                 unreachable: false,
             });
-            expr_ctx.else_control_flow_map.insert(label_entry.idx, idx);
+            expr_ctx
+                .else_control_flow_map
+                .insert(label_entry.idx.unwrap(), idx);
         }
         ExprEnd => {
             let label_entry = expr_ctx.pop_label()?;
             expr_ctx
                 .stack()
                 .push_result_type(&label_entry.ty.output_type);
-            expr_ctx.end_control_flow_map.insert(label_entry.idx, idx);
+            if let Some(start_idx) = label_entry.idx {
+                expr_ctx.end_control_flow_map.insert(start_idx, idx);
+            }
         }
     }
     Ok(())
@@ -1207,7 +1211,7 @@ mod context {
 
     pub struct LabelEntry {
         pub ty: WasmFuncType,
-        pub idx: WasmInstructionIdx,
+        pub idx: Option<WasmInstructionIdx>,
         pub opcode: LabelOpcode,
         pub min_stack_depth: usize,
         pub unreachable: bool,
@@ -1233,7 +1237,7 @@ mod context {
             };
             LabelStack(vec![LabelEntry {
                 ty,
-                idx: WasmInstructionIdx(0),
+                idx: None,
                 opcode: LabelOpcode::Block,
                 min_stack_depth: 0,
                 unreachable: false,
@@ -1243,7 +1247,7 @@ mod context {
         pub fn with_func_type(ty: WasmFuncType) -> Self {
             LabelStack(vec![LabelEntry {
                 ty,
-                idx: WasmInstructionIdx(0),
+                idx: None,
                 opcode: LabelOpcode::Block,
                 min_stack_depth: 0,
                 unreachable: false,
@@ -1445,6 +1449,9 @@ mod context {
             }
         }
         for elem in &wmod.elems {
+            for init_expr in &elem.init {
+                add_const_expr_refs(init_expr, &mut refs);
+            }
             if let WasmElemMode::Active {
                 ref offset_expr, ..
             } = elem.elem_mode

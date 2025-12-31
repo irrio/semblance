@@ -359,12 +359,13 @@ fn typecheck_externval(
             match_globaltype(etype, globaltype)
         }
         (WasmExternVal::Mem(memaddr), WasmImportDesc::Mem(memtype)) => {
-            let etype = &store
+            let mem = &store
                 .mems
                 .try_resolve(*memaddr)
-                .ok_or(WasmInstantiationError::InvalidMemAddr)?
-                .type_;
-            match_memtype(etype, memtype)
+                .ok_or(WasmInstantiationError::InvalidMemAddr)?;
+            let etype = mem.type_;
+            let actual_size = mem.data.len() / WasmMemInst::PAGE_SIZE;
+            match_memtype(&etype, memtype, actual_size)
         }
         (WasmExternVal::Table(tableaddr), WasmImportDesc::Table(tabletype)) => {
             let etype = &store
@@ -397,8 +398,12 @@ fn match_globaltype(
     }
 }
 
-fn match_memtype(externtype: &WasmMemType, memtype: &WasmMemType) -> WasmInstantiationResult {
-    if match_limits(&externtype.limits, &memtype.limits) {
+fn match_memtype(
+    externtype: &WasmMemType,
+    memtype: &WasmMemType,
+    actual_size: usize,
+) -> WasmInstantiationResult {
+    if match_limits(&externtype.limits, &memtype.limits, Some(actual_size)) {
         Ok(())
     } else {
         Err(WasmInstantiationError::InvalidExternMem)
@@ -410,7 +415,7 @@ fn match_tabletype(
     tabletype: &WasmTableType,
 ) -> WasmInstantiationResult {
     if externtype.ref_type == tabletype.ref_type
-        && match_limits(&externtype.limits, &tabletype.limits)
+        && match_limits(&externtype.limits, &tabletype.limits, None)
     {
         Ok(())
     } else {
@@ -418,8 +423,13 @@ fn match_tabletype(
     }
 }
 
-fn match_limits(externlimits: &WasmLimits, limits: &WasmLimits) -> bool {
-    if externlimits.min >= limits.min {
+fn match_limits(
+    externlimits: &WasmLimits,
+    limits: &WasmLimits,
+    actual_size: Option<usize>,
+) -> bool {
+    let externmin = externlimits.min.max(actual_size.unwrap_or(0) as u32);
+    if externmin >= limits.min {
         match limits.max {
             None => true,
             Some(max) => match externlimits.max {

@@ -46,23 +46,21 @@ impl WasmLinker {
         }
     }
 
-    pub fn with_host_module(
-        mut self,
+    pub fn add_host_module(
+        &mut self,
         modname: String,
         hostfuncs: &[(&'static str, WasmFuncType, WasmHostFunc)],
-    ) -> Self {
+    ) {
         let mut funcs = HashMap::with_capacity(hostfuncs.len());
         for (name, functype, func) in hostfuncs {
             funcs.insert(*name, (functype.clone(), *func));
         }
         self.modules
             .insert(modname, LinkerEntry::Host(HostModule { funcs }));
-        self
     }
 
-    pub fn with_module(mut self, modname: String, module: Rc<WasmModule>) -> Self {
+    pub fn add_module(&mut self, modname: String, module: Rc<WasmModule>) {
         self.modules.insert(modname, LinkerEntry::Wasm(module));
-        self
     }
 
     pub fn link(&self, wmod: &WasmModule) -> WasmLinkResult<(WasmStore, Vec<WasmExternVal>)> {
