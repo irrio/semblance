@@ -1127,6 +1127,9 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let n = unsafe { stack.pop_value().num.i32 } as usize;
                 let val = unsafe { stack.pop_value().num.i32 };
                 let d = unsafe { stack.pop_value().num.i32 } as usize;
+                if d.checked_add(n).ok_or(WasmTrap {})? > mem.data.len() {
+                    return Err(WasmTrap {});
+                }
                 for byte in &mut mem.data[d..(d + n)] {
                     *byte = val as u8
                 }
