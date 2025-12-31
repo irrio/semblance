@@ -157,14 +157,14 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(unsafe { a.num.i32 }.count_ones() as i32);
             }
             I32Add => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i32.wrapping_add(b.num.i32) });
+                let b = unsafe { stack.pop_value().num.i32 };
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a.wrapping_add(b));
             }
             I32Sub => {
-                let b = stack.pop_value();
-                let a = stack.pop_value();
-                stack.push_value(unsafe { a.num.i32.wrapping_sub(b.num.i32) });
+                let b = unsafe { stack.pop_value().num.i32 };
+                let a = unsafe { stack.pop_value().num.i32 };
+                stack.push_value(a.wrapping_sub(b));
             }
             I32Mul => {
                 let b = stack.pop_value();

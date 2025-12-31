@@ -61,6 +61,7 @@ impl WasmStack {
         for _ in 0..n {
             out.push(self.pop_value());
         }
+        out.reverse();
         out
     }
 
