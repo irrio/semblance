@@ -4,6 +4,7 @@ use std::{
     num::{ParseFloatError, ParseIntError},
     path::PathBuf,
     rc::Rc,
+    sync::LazyLock,
 };
 
 use semblance::{
@@ -297,6 +298,11 @@ fn parse_args_for_value_type(
     Ok(parsed.into_boxed_slice())
 }
 
+static HOSTCALL_PUTS_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+    output_type: WasmResultType(Box::new([])),
+});
+
 fn hostcall_puts(
     store: &mut WasmStore,
     winst_id: WasmInstanceAddr,
@@ -310,13 +316,6 @@ fn hostcall_puts(
     let str = cstr.to_string_lossy();
     println!("{}", str);
     Box::new([])
-}
-
-fn hostcall_puts_type() -> WasmFuncType {
-    WasmFuncType {
-        input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
-        output_type: WasmResultType(Box::new([])),
-    }
 }
 
 #[derive(Debug)]
@@ -349,7 +348,7 @@ fn run(args: &CliArgs) -> SemblanceResult {
             let mut linker = WasmLinker::new();
             linker.add_host_module(
                 "env".to_string(),
-                &[("puts", hostcall_puts_type(), &hostcall_puts)],
+                &[("puts", &*HOSTCALL_PUTS_TYPE, &hostcall_puts)],
             );
             for link_arg in &args.link {
                 let module =

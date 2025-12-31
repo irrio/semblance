@@ -1,12 +1,17 @@
+use semblance::inst::instantiate::WasmInstantiationResult;
 use semblance::inst::table::WasmInstanceAddr;
 use semblance::inst::{
-    DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
+    DynamicWasmResult, WasmExternVal, WasmHostFunc, WasmNumValue, WasmResult, WasmStore, WasmTrap,
+    WasmValue,
 };
-use semblance::module::{WasmFromBytesError, WasmModule, WasmNumType, WasmValueType};
+use semblance::module::{
+    WasmFromBytesError, WasmFuncType, WasmModule, WasmNumType, WasmResultType, WasmValueType,
+};
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::LazyLock;
 use wast::core::NanPattern;
 use wast::parser::{ParseBuffer, parse};
 use wast::token::{F32, F64, Id};
@@ -42,13 +47,37 @@ struct WastInterpreter {
     store: WasmStore,
     registry: HashMap<String, WasmInstanceAddr>,
     linker_symbols: HashMap<String, WasmInstanceAddr>,
+    spectest_exports: HashMap<&'static str, WasmExternVal>,
     current_inst: Option<WasmInstanceAddr>,
+}
+
+static HOSTCALL_PRINT_I32_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print_i32(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    println!("{}", unsafe { args[0].num.i32 });
+    Box::new([])
 }
 
 impl WastInterpreter {
     fn new() -> Self {
+        let mut store = WasmStore::new();
+        let mut spectest_exports = HashMap::new();
+        spectest_exports.insert(
+            "print_i32",
+            WasmExternVal::Func(
+                store.alloc_hostfunc(&*HOSTCALL_PRINT_I32_TYPE, &hostcall_print_i32),
+            ),
+        );
         WastInterpreter {
-            store: WasmStore::new(),
+            store,
+            spectest_exports,
             registry: HashMap::new(),
             linker_symbols: HashMap::new(),
             current_inst: None,
@@ -98,11 +127,15 @@ impl WastInterpreter {
                 name,
                 module,
             } => {
-                let winst_id = self
-                    .registry
-                    .get(module.expect("no module id!").name())
-                    .expect("no registered module!");
-                self.linker_symbols.insert(name.to_string(), *winst_id);
+                let winst_id = if let Some(modname) = module {
+                    *self
+                        .registry
+                        .get(modname.name())
+                        .expect("no registered module!")
+                } else {
+                    self.current_inst.expect("no current inst!")
+                };
+                self.linker_symbols.insert(name.to_string(), winst_id);
             }
             Invoke(wast_invoke) => {
                 let _ret = self.eval_invoke(wast_invoke).expect("trap!");
@@ -129,11 +162,11 @@ impl WastInterpreter {
                 todo!("assert exhaustion")
             }
             AssertUnlinkable {
-                span,
+                span: _,
                 module,
                 message,
             } => {
-                todo!("assert unlinkable")
+                self.eval_assert_unlinkable(module, message);
             }
             AssertException { span, exec } => {
                 todo!("assert exception")
@@ -154,27 +187,36 @@ impl WastInterpreter {
         }
     }
 
+    fn instantiate(&mut self, wmod: Rc<WasmModule>) -> WasmInstantiationResult<WasmInstanceAddr> {
+        let mut externvals: Vec<WasmExternVal> = Vec::with_capacity(wmod.imports.len());
+        for import in &wmod.imports {
+            if import.module_name.0.as_ref() == "spectest" {
+                let externval = self
+                    .spectest_exports
+                    .get(import.item_name.0.as_ref())
+                    .expect("unknown spectest export");
+                externvals.push(*externval);
+            } else {
+                let dep_inst_id = self
+                    .linker_symbols
+                    .get(import.module_name.0.as_ref())
+                    .expect("unknown linker symbol");
+                let dep_inst = self.store.instances.resolve(*dep_inst_id);
+                let externval = dep_inst
+                    .resolve_export_by_name(import.item_name.0.as_ref())
+                    .expect("unknown item in module");
+                externvals.push(externval);
+            }
+        }
+        self.store.instantiate(wmod, &externvals)
+    }
+
     fn eval_module(&mut self, quote_wat: &mut QuoteWat) {
         let wmod = Rc::new(
             self.eval_quote_wat(quote_wat)
                 .expect("failed to load module"),
         );
-        let mut externvals: Vec<WasmExternVal> = Vec::with_capacity(wmod.imports.len());
-        for import in &wmod.imports {
-            let dep_inst_id = self
-                .linker_symbols
-                .get(import.module_name.0.as_ref())
-                .expect("unknown linker symbol");
-            let dep_inst = self.store.instances.resolve(*dep_inst_id);
-            let externval = dep_inst
-                .resolve_export_by_name(import.item_name.0.as_ref())
-                .expect("unknown item in module");
-            externvals.push(externval);
-        }
-        let winst_id = self
-            .store
-            .instantiate(wmod, &externvals)
-            .expect("failed to instantiate module");
+        let winst_id = self.instantiate(wmod).expect("failed to instantiate");
         if let Some(name) = quote_wat.name() {
             self.registry.insert(name.name().to_string(), winst_id);
         }
@@ -190,6 +232,16 @@ impl WastInterpreter {
         }
     }
 
+    fn eval_assert_unlinkable(&mut self, module: &mut Wat, _message: &str) {
+        let wmod = Rc::new(self.eval_wat(module).expect("failed to load module"));
+        let res = self.instantiate(wmod);
+        if let Err(_) = res {
+            // ok
+        } else {
+            panic!("should be unlinkable");
+        }
+    }
+
     fn eval_assert_malformed(&mut self, _module: &mut QuoteWat, _message: &str) {
         println!("skipping assert malformed");
         //let res = self.eval_quote_wat(module);
@@ -201,6 +253,11 @@ impl WastInterpreter {
     }
 
     fn eval_quote_wat(&mut self, module: &mut QuoteWat) -> Result<WasmModule, WasmFromBytesError> {
+        let bytes = module.encode().expect("failed to encode wat");
+        WasmModule::from_bytes(&bytes)
+    }
+
+    fn eval_wat(&mut self, module: &mut Wat) -> Result<WasmModule, WasmFromBytesError> {
         let bytes = module.encode().expect("failed to encode wat");
         WasmModule::from_bytes(&bytes)
     }
@@ -273,8 +330,15 @@ impl WastInterpreter {
 
     fn eval_invoke(&mut self, wast_invoke: &WastInvoke) -> Result<DynamicWasmResult, WasmTrap> {
         let args = self.eval_args(&wast_invoke.args);
-        let winst_id = self.current_inst.as_mut().expect("no inst!");
-        let winst = self.store.instances.resolve(*winst_id);
+        let winst_id = if let Some(modname) = wast_invoke.module {
+            *self
+                .registry
+                .get(modname.name())
+                .expect("no inst with name")
+        } else {
+            self.current_inst.expect("no inst!")
+        };
+        let winst = self.store.instances.resolve(winst_id);
         let funcaddr = winst
             .resolve_export_fn_by_name(wast_invoke.name)
             .expect("fn not found");
@@ -327,11 +391,15 @@ impl WastInterpreter {
         module: Option<&Id>,
         global_name: &str,
     ) -> Result<DynamicWasmResult, WasmTrap> {
-        if module.is_some() {
-            todo!("eval get with module id")
-        }
-        let winst_id = self.current_inst.as_mut().expect("no inst!");
-        let winst = self.store.instances.resolve(*winst_id);
+        let winst_id = if let Some(modname) = module {
+            *self
+                .registry
+                .get(modname.name())
+                .expect("named module not found")
+        } else {
+            self.current_inst.expect("no inst!")
+        };
+        let winst = self.store.instances.resolve(winst_id);
         let globaladdr = winst
             .resolve_export_global_by_name(global_name)
             .expect("global not found");

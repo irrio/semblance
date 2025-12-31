@@ -271,7 +271,7 @@ pub struct WasmStore {
     pub datas: StoreTable<WasmDataInst>,
 }
 
-impl<'s> WasmStore {
+impl WasmStore {
     pub fn new() -> Self {
         WasmStore {
             instances: StoreTable::new(),
@@ -320,7 +320,7 @@ impl<'s> WasmStore {
 
     pub fn alloc_hostfunc(
         &mut self,
-        type_: &'s WasmFuncType,
+        type_: &'static WasmFuncType,
         hostfunc: WasmHostFunc,
     ) -> WasmFuncAddr {
         self.funcs.add(WasmFuncInst {

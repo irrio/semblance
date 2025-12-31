@@ -27,7 +27,7 @@ pub fn infer_module_name_from_path(path: &Path) -> WasmLinkResult<String> {
 }
 
 struct HostModule {
-    funcs: HashMap<&'static str, (WasmFuncType, WasmHostFunc)>,
+    funcs: HashMap<&'static str, (&'static WasmFuncType, WasmHostFunc)>,
 }
 
 enum LinkerEntry {
@@ -49,11 +49,11 @@ impl WasmLinker {
     pub fn add_host_module(
         &mut self,
         modname: String,
-        hostfuncs: &[(&'static str, WasmFuncType, WasmHostFunc)],
+        hostfuncs: &[(&'static str, &'static WasmFuncType, WasmHostFunc)],
     ) {
         let mut funcs = HashMap::with_capacity(hostfuncs.len());
         for (name, functype, func) in hostfuncs {
-            funcs.insert(*name, (functype.clone(), *func));
+            funcs.insert(*name, (*functype, *func));
         }
         self.modules
             .insert(modname, LinkerEntry::Host(HostModule { funcs }));
