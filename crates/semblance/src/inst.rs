@@ -308,6 +308,7 @@ impl<'s> WasmStore {
                 for _ in 0..ty.output_type.0.len() {
                     out.push(stack.pop_value());
                 }
+                out.reverse();
                 Ok(DynamicWasmResult {
                     ty: ty.output_type.0.clone(),
                     res: WasmResult(out),

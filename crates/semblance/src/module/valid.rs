@@ -1507,7 +1507,7 @@ impl TypeStack {
     }
 
     pub fn push_result_type(&self, result_type: &WasmResultType) {
-        for t in result_type.0.iter().rev() {
+        for t in result_type.0.iter() {
             self.push(*t);
         }
     }

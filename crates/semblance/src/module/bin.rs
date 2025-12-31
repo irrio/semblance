@@ -450,7 +450,7 @@ fn decode_block_type(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmBlockType
         Ok((WasmBlockType::InlineType(Some(val_type)), bytes))
     } else {
         let (s33, bytes) = decode_leb128_signed(bytes)?;
-        if s33 > 0 && s33 < (u32::MAX as i64) {
+        if s33 >= 0 && s33 < (u32::MAX as i64) {
             Ok((WasmBlockType::TypeRef(WasmTypeIdx(s33 as u32)), bytes))
         } else {
             Err(WasmDecodeError::InvalidBlockType)
