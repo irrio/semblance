@@ -1,8 +1,7 @@
 use semblance::inst::instantiate::WasmInstantiationResult;
 use semblance::inst::table::WasmInstanceAddr;
 use semblance::inst::{
-    DynamicWasmResult, WasmExternVal, WasmHostFunc, WasmNumValue, WasmResult, WasmStore, WasmTrap,
-    WasmValue,
+    DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
 };
 use semblance::module::{
     WasmFromBytesError, WasmFuncType, WasmModule, WasmNumType, WasmResultType, WasmValueType,
@@ -98,13 +97,13 @@ impl WastInterpreter {
             Module(quote_wat) => {
                 self.eval_module(quote_wat);
             }
-            ModuleDefinition(quote_wat) => {
+            ModuleDefinition(_quote_wat) => {
                 todo!("module definition");
             }
             ModuleInstance {
-                span,
-                instance,
-                module,
+                span: _,
+                instance: _,
+                module: _,
             } => {
                 todo!("module instance");
             }
@@ -141,7 +140,7 @@ impl WastInterpreter {
                 let _ret = self.eval_invoke(wast_invoke).expect("trap!");
             }
             AssertTrap {
-                span,
+                span: _,
                 exec,
                 message,
             } => {
@@ -155,9 +154,9 @@ impl WastInterpreter {
                 self.eval_assert_return(exec, results);
             }
             AssertExhaustion {
-                span,
-                call,
-                message,
+                span: _,
+                call: _,
+                message: _,
             } => {
                 todo!("assert exhaustion")
             }
@@ -168,20 +167,20 @@ impl WastInterpreter {
             } => {
                 self.eval_assert_unlinkable(module, message);
             }
-            AssertException { span, exec } => {
+            AssertException { span: _, exec: _ } => {
                 todo!("assert exception")
             }
             AssertSuspension {
-                span,
-                exec,
-                message,
+                span: _,
+                exec: _,
+                message: _,
             } => {
                 todo!("assert suspension")
             }
-            Thread(wast_thread) => {
+            Thread(_wast_thread) => {
                 todo!("thread")
             }
-            Wait { span, thread } => {
+            Wait { span: _, thread: _ } => {
                 todo!("wait")
             }
         }
@@ -298,18 +297,18 @@ impl WastInterpreter {
                     assert_eq!(*ty, WasmValueType::Num(WasmNumType::F64));
                     assert_nan_pattern_64(nan_pattern, unsafe { val.num.f64 });
                 }
-                wast::core::WastRetCore::V128(v128_pattern) => todo!(),
-                wast::core::WastRetCore::RefNull(heap_type) => todo!(),
+                wast::core::WastRetCore::V128(_v128_pattern) => todo!(),
+                wast::core::WastRetCore::RefNull(_heap_type) => todo!(),
                 wast::core::WastRetCore::RefExtern(_) => todo!(),
                 wast::core::WastRetCore::RefHost(_) => todo!(),
-                wast::core::WastRetCore::RefFunc(index) => todo!(),
+                wast::core::WastRetCore::RefFunc(_index) => todo!(),
                 wast::core::WastRetCore::RefAny => todo!(),
                 wast::core::WastRetCore::RefEq => todo!(),
                 wast::core::WastRetCore::RefArray => todo!(),
                 wast::core::WastRetCore::RefStruct => todo!(),
                 wast::core::WastRetCore::RefI31 => todo!(),
                 wast::core::WastRetCore::RefI31Shared => todo!(),
-                wast::core::WastRetCore::Either(wast_ret_cores) => todo!(),
+                wast::core::WastRetCore::Either(_wast_ret_cores) => todo!(),
             }
         } else {
             panic!("component model");
@@ -382,7 +381,7 @@ impl WastInterpreter {
         }
     }
 
-    fn eval_exec_wat(&mut self, wat: &Wat) -> Result<DynamicWasmResult, WasmTrap> {
+    fn eval_exec_wat(&mut self, _wat: &Wat) -> Result<DynamicWasmResult, WasmTrap> {
         todo!("exec wat");
     }
 
