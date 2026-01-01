@@ -854,6 +854,12 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let winst = store.instances.resolve(frame.winst_id);
                 let table = store.tables.resolve_mut(winst.addr_of(*table_idx));
                 let elem = store.elems.resolve(winst.addr_of(*elem_idx));
+                if d.checked_add(n).ok_or(WasmTrap {})? > table.elems.len() {
+                    return Err(WasmTrap {});
+                }
+                if s.checked_add(n).ok_or(WasmTrap {})? > elem.elem.len() {
+                    return Err(WasmTrap {});
+                }
                 (&mut table.elems[d..(d + n)]).copy_from_slice(&elem.elem[s..(s + n)]);
             }
             ElemDrop { elem_idx } => {
