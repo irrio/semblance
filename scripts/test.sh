@@ -9,25 +9,55 @@ now_millis() {
     echo $(( NOW_SECS * 1000 + (NOW_NANOS / 1000000) ))
 }
 
-SEMBLANCE=target/release/semblance
+DB=teststate/analytics.duckdb
+
+createdb() {
+    if [[ ! -f "$DB" ]]; then
+        duckdb "$DB" <<END_SQL
+
+CREATE TABLE test_run (
+    id              VARCHAR PRIMARY KEY,
+    exe             VARCHAR NOT NULL,
+    git_commit_sha  VARCHAR NOT NULL,
+    git_dirty       BOOLEAN NOT NULL,
+    started_at      TIMESTAMP NOT NULL,
+    finished_at     TIMESTAMP NOT NULL
+);
+
+CREATE TABLE wast_execution (
+    id                  UUID PRIMARY KEY DEFAULT uuidv7(),
+    test_run_id         VARCHAR NOT NULL REFERENCES test_run(id),
+    wast_path           VARCHAR NOT NULL,
+    exit_code           INTEGER NOT NULL,
+    passed_directives   INTEGER NOT NULL,
+    total_directives    INTEGER NOT NULL,
+    started_at          TIMESTAMP NOT NULL,
+    finished_at         TIMESTAMP NOT NULL
+);
+
+END_SQL
+
+    fi
+}
+
+mkdir -p teststate/runs
+cargo build --package semblance-wast || exit 1
+createdb
+
+SEMBLANCE_HARNESS=target/debug/semblance-wast
 NUM_WORKERS=8
 START_TIME=$(now_millis)
 WORK_DIR=$(mktemp -d -p ./teststate/runs "$(printf "%x" "$START_TIME")-XXXX")
 TEST_RUN=$(basename "$WORK_DIR")
-DB="./teststate/analytics.duckdb"
 
-echo "running" >"$WORK_DIR/status"
 mkdir "$WORK_DIR/worker"
 
 for ((i=0; i<NUM_WORKERS; i++)); do
     mkdir "$WORK_DIR/worker/$i"
     mkfifo "$WORK_DIR/worker/$i/queue"
     (
-        PASSED=0
-        FAILED=0
-        SKIPPED=0
         exec {log_fd}>>"$WORK_DIR/worker/$i/worker.log"
-        exec {csv_fd}>>"$WORK_DIR/worker/$i/test_case_executions.csv"
+        exec {csv_fd}>>"$WORK_DIR/worker/$i/results.csv"
 
         log() {
             echo "[test.sh] $@" >&$log_fd
@@ -37,35 +67,26 @@ for ((i=0; i<NUM_WORKERS; i++)); do
             echo "$@" >&$csv_fd
         }
 
-        while read -r SUITE_NAME TEST_CASE_ID ARGS; do
-            TEST_CASE_START_TIME=$(now_millis)
-            log "$TEST_CASE_ID: $SEMBLANCE $ARGS"
-            if [[ "$SUITE_NAME" != *simd* ]]; then
-                "$SEMBLANCE" ${(z)ARGS} >&$log_fd 2>&1
-                EXIT_CODE="$?"
+        while read -r WAST_SUITE; do
+            log "Running $WAST_SUITE"
+            SUITE_START_TIME=$(now_millis)
+            "$SEMBLANCE_HARNESS" "$WAST_SUITE" >&$log_fd 2>&1
+            EXIT_CODE="$?"
+            SUITE_END_TIME=$(now_millis)
+            SUITE_DURATION=$(( SUITE_END_TIME - SUITE_START_TIME ))
+            log "EXITED with code $EXIT_CODE after ${SUITE_DURATION}ms"
+            DIRECTIVE_TEXT="$(tail -r "$WORK_DIR/worker/$i/worker.log" | grep -m 1 -o '\[\d\+/\d\+\]')"
+            DIRECTIVE_NUMS="${"${DIRECTIVE_TEXT#'['}"%']'}";
+            DIRECTIVE_PARTS=("${(@s:/:)DIRECTIVE_NUMS}")
+            TOTAL_DIRECTIVES="${DIRECTIVE_PARTS[1]}"
+            if [[ "$EXIT_CODE" == 0 ]]; then
+                PASSED_DIRECTIVES="$TOTAL_DIRECTIVES"
             else
-                log "Skipping"
-                EXIT_CODE="NULL"
+                PASSED_DIRECTIVES="${DIRECTIVE_PARTS[0]}"
             fi
-            TEST_CASE_END_TIME=$(now_millis)
-            case $EXIT_CODE in
-                0)
-                    ((PASSED++))
-                ;;
-                NULL)
-                    ((SKIPPED++))
-                ;;
-                *)
-                    ((FAILED++))
-                ;;
-            esac
-            log "EXITED: $EXIT_CODE"
-            write_csv "$TEST_RUN,$SUITE_NAME,$TEST_CASE_ID,$EXIT_CODE,$TEST_CASE_START_TIME,$TEST_CASE_END_TIME"
+            write_csv "$TEST_RUN,$WAST_SUITE,$EXIT_CODE,$PASSED_DIRECTIVES,$TOTAL_DIRECTIVES,$SUITE_START_TIME,$SUITE_END_TIME"
         done <"$WORK_DIR/worker/$i/queue"
 
-        echo "$PASSED" >"$WORK_DIR/worker/$i/passed_count"
-        echo "$FAILED" >"$WORK_DIR/worker/$i/failed_count"
-        echo "$SKIPPED" >"$WORK_DIR/worker/$i/skipped_count"
         rm "$WORK_DIR/worker/$i/queue"
         exec {log_fd}>&-
         exec {csv_fd}>&-
@@ -79,42 +100,25 @@ for ((i=0; i<NUM_WORKERS; i++)); do
     QUEUE_FDS+=("$fd")
 done
 
-declare -i TOTAL_TESTS
-TOTAL_TESTS=$(cat teststate/suites/*/commands.txt | wc -l)
 TESTS_QUEUED=0
-
-render_percent() {
-    local -i PERCENT;
-    PERCENT="${1:?}"
-    printf "\r["
-    for ((i=0;i<=25;i++)); do
-        if (( $i * 4 <= $PERCENT )); then
-            printf "="
-        else
-            printf " "
-        fi
-    done
-    printf "]"
-}
-
-report_progress() {
-    if (( TESTS_QUEUED == TOTAL_TESTS || (TESTS_QUEUED % 50) == 0 )); then
-        local PERCENT=$(bc -e "($TESTS_QUEUED / $TOTAL_TESTS) * 100" --scale 2)
-        local PROGRESS_BAR=$(render_percent "$PERCENT")
-        printf "\r%s" "$PROGRESS_BAR"
-    fi
-}
 
 round_robin() {
     while read -r LINE; do
         idx=$(( TESTS_QUEUED % NUM_WORKERS ))
         echo "$LINE" >&${QUEUE_FDS[$idx]}
         ((TESTS_QUEUED++))
-        report_progress
     done
 }
 
-cat teststate/suites/*/commands.txt | round_robin
+list_suites() {
+    for SUITE in testsuite/*.wast; do
+        if [[ "$SUITE" != *simd* ]]; then
+            echo "$SUITE"
+        fi
+    done
+}
+
+list_suites | round_robin
 
 for ((i=0; i<NUM_WORKERS; i++)); do
     fd="${QUEUE_FDS[$i]}"
@@ -124,53 +128,28 @@ done
 wait
 END_TIME=$(now_millis)
 
-PASSED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/passed_count)"
-FAILED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/failed_count)"
-SKIPPED="$(awk '{ sum += $1 } END { print sum }' $WORK_DIR/worker/*/skipped_count)"
-
-declare -i PANICS
-PANICS=$(grep -o panicked $WORK_DIR/worker/*/worker.log | wc -l)
-
-echo "$PANICS" >"$WORK_DIR/panic_count"
-echo "$PASSED" >"$WORK_DIR/passed_count"
-echo "$FAILED" >"$WORK_DIR/failed_count"
-echo "$SKIPPED" >"$WORK_DIR/skipped_count"
-
-if [[ "$FAILED" -eq 0 ]]; then
-    echo "passed" >"$WORK_DIR/status"
-    PASSED_BOOL=true
-else
-    echo "failed" >"$WORK_DIR/status"
-    PASSED_BOOL=false
-fi
-
 if [ -z "$(git status --porcelain)" ]; then
     GIT_DIRTY=false
 else
     GIT_DIRTY=true
 fi
 
-duckdb "$DB" <<<"insert into test_run(id, exe, git_commit_sha, git_dirty, started_at, finished_at, passed)
-    VALUES ('$TEST_RUN', '$SEMBLANCE', '$(git rev-parse HEAD)', '$GIT_DIRTY', make_timestamp_ms($START_TIME), make_timestamp_ms($END_TIME), $PASSED_BOOL);
-    insert into test_case_execution(test_run_id,suite_name,test_case,exit_code,started_at,finished_at)
+duckdb "$DB" <<<"insert into test_run(id, exe, git_commit_sha, git_dirty, started_at, finished_at)
+    VALUES ('$TEST_RUN', '$SEMBLANCE_HARNESS', '$(git rev-parse HEAD)', '$GIT_DIRTY', make_timestamp_ms($START_TIME), make_timestamp_ms($END_TIME));
+    insert into wast_execution(test_run_id,wast_path,exit_code,passed_directives,total_directives,started_at,finished_at)
     select
         column0 as test_run_id,
-        column1 as suite_name,
-        column2 as test_case,
-        TRY_CAST(column3 as INTEGER) as exit_code,
-        make_timestamp_ms(column4) as started_at,
-        make_timestamp_ms(column5) as finished_at
-    from read_csv('./teststate/runs/$TEST_RUN/worker/*/test_case_executions.csv')"
+        column1 as wast_path,
+        column2 as exit_code,
+        column3 as passed_directives,
+        column4 as total_directives,
+        make_timestamp_ms(column5) as started_at,
+        make_timestamp_ms(column6) as finished_at
+    from read_csv('./teststate/runs/$TEST_RUN/worker/*/results.csv')"
 
-TEST_DURATION=$(( (END_TIME - START_TIME) / 1000 ))
-ELAPSED_MINS=$(( TEST_DURATION / 60 ))
-SECS_REMAINING=$(( TEST_DURATION % 60 ))
-echo "\r---------------------------------------------"
-echo "Completed in ${ELAPSED_MINS}m ${SECS_REMAINING}s -- $PANICS panics detected"
+TEST_DURATION=$(( (END_TIME - START_TIME) ))
+GRADE=$(duckdb "$DB" -ascii -noheader -c "select PRINTF('%.2f', (sum(passed_directives) / sum(total_directives)) * 100) as percentage from wast_execution where test_run_id='$TEST_RUN';")
 echo "---------------------------------------------"
-printf "%-10s %-10s\n" PASSED "$PASSED"
-printf "%-10s %-10s\n" FAILED "$FAILED"
-printf "%-10s %-10s\n" SKIPPED "$SKIPPED"
+echo "Completed in ${TEST_DURATION}ms with $GRADE% passing"
 echo "---------------------------------------------"
 echo "$WORK_DIR"
-./scripts/trendline.sh
