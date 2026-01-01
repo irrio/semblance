@@ -3,19 +3,19 @@ use super::{
     WasmTableInst,
 };
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmInstanceAddr(u32);
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmFuncAddr(u32);
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmTableAddr(u32);
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmMemAddr(u32);
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmGlobalAddr(u32);
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmElemAddr(u32);
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub struct WasmDataAddr(u32);
 
 impl std::fmt::Display for WasmFuncAddr {
@@ -209,7 +209,7 @@ impl<T: Addressable> StoreTable<T> {
         let idx1 = addr1.to_idx();
         let idx2 = addr2.to_idx();
         assert!(idx1 != idx2);
-        let mid = (idx1 + idx2) / 2;
+        let mid = (idx1 + idx2 + 1) / 2;
         let (low, high) = self.items.split_at_mut(mid);
         if idx1 > idx2 {
             let ref1 = &mut high[idx1 - mid];

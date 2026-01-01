@@ -812,18 +812,33 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let winst = store.instances.resolve(frame.winst_id);
                 let tableaddr_dst = winst.addr_of(*dst);
                 let tableaddr_src = winst.addr_of(*src);
-                let (table_dst, table_src) =
-                    store.tables.resolve_multi_mut(tableaddr_dst, tableaddr_src);
                 let n = unsafe { stack.pop_value().num.i32 } as usize;
                 let s = unsafe { stack.pop_value().num.i32 } as usize;
                 let d = unsafe { stack.pop_value().num.i32 } as usize;
-                if s + n > table_src.elems.len() {
-                    return Err(WasmTrap {});
-                }
-                if d + n > table_dst.elems.len() {
-                    return Err(WasmTrap {});
-                }
-                if n > 0 {
+                if tableaddr_dst == tableaddr_src {
+                    let table = store.tables.resolve_mut(tableaddr_dst);
+                    if s.checked_add(n).ok_or(WasmTrap {})? > table.elems.len() {
+                        return Err(WasmTrap {});
+                    }
+                    if d.checked_add(n).ok_or(WasmTrap {})? > table.elems.len() {
+                        return Err(WasmTrap {});
+                    }
+                    unsafe {
+                        std::ptr::copy(
+                            table.elems.as_ptr().add(s),
+                            table.elems.as_mut_ptr().add(d),
+                            n,
+                        )
+                    };
+                } else {
+                    let (table_dst, table_src) =
+                        store.tables.resolve_multi_mut(tableaddr_dst, tableaddr_src);
+                    if s.checked_add(n).ok_or(WasmTrap {})? > table_src.elems.len() {
+                        return Err(WasmTrap {});
+                    }
+                    if d.checked_add(n).ok_or(WasmTrap {})? > table_dst.elems.len() {
+                        return Err(WasmTrap {});
+                    }
                     (&mut table_dst.elems[d..(d + n)])
                         .copy_from_slice(&table_src.elems[s..(s + n)]);
                 }
