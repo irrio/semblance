@@ -658,8 +658,8 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(a as f32);
             }
             F32ConvertI64U => {
-                let a = unsafe { stack.pop_value().num.i64 };
-                stack.push_value(a as u32 as f32);
+                let a = unsafe { stack.pop_value().num.i64 } as u64;
+                stack.push_value(a as f32);
             }
             F32DemoteF64 => {
                 let a = unsafe { stack.pop_value().num.f64 };
@@ -670,8 +670,8 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(a as f64);
             }
             F64ConvertI32U => {
-                let a = unsafe { stack.pop_value().num.i32 };
-                stack.push_value(a as u64 as f64);
+                let a = unsafe { stack.pop_value().num.i32 } as u32;
+                stack.push_value(a as f64);
             }
             F64ConvertI64S => {
                 let a = unsafe { stack.pop_value().num.i64 };
