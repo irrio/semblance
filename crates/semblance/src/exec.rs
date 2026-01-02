@@ -12,8 +12,8 @@ macro_rules! mem_load {
         let winst = $store.instances.resolve(frame.winst_id);
         let memaddr = winst.memaddrs[0];
         let mem = $store.mems.resolve(memaddr);
-        let i = unsafe { $stack.pop_value().num.i32 as u32 };
-        let ea = (i + $memarg.offset) as usize;
+        let i = unsafe { $stack.pop_value().num.i32 } as u32 as usize;
+        let ea = i + ($memarg.offset as usize);
         const N: usize = std::mem::size_of::<$t>();
         if ea + N > mem.data.len() {
             return Err(WasmTrap {});
@@ -31,8 +31,8 @@ macro_rules! mem_store {
         let memaddr = winst.memaddrs[0];
         let mem = $store.mems.resolve_mut(memaddr);
         let val = unsafe { $stack.pop_value().num.$t };
-        let i = unsafe { $stack.pop_value().num.i32 as u32 };
-        let ea = (i + $memarg.offset) as usize;
+        let i = unsafe { $stack.pop_value().num.i32 } as u32 as usize;
+        let ea = i + ($memarg.offset as usize);
         const N: usize = std::mem::size_of::<$t2>();
         if ea + N > mem.data.len() {
             return Err(WasmTrap {});
