@@ -79,6 +79,35 @@ macro_rules! goto {
     };
 }
 
+macro_rules! trunc_float_checked {
+    ($v:ident, $f:ident => $i:ident) => {
+        // Adapted from num-traits checked float to integer cast
+        // See: https://docs.rs/num-traits/0.2.19/src/num_traits/cast.rs.html#288
+        if size_of::<$f>() > size_of::<$i>() {
+            if $v > ($i::MIN as $f - 1.0) && $v < ($i::MAX as $f + 1.0) {
+                Some(unsafe { $v.to_int_unchecked::<$i>() })
+            } else {
+                None
+            }
+        } else {
+            const IS_SIGNED: bool = $i::MIN != 0;
+            if IS_SIGNED {
+                if $v >= ($i::MIN as $f) && $v < ($i::MAX as $f) {
+                    Some(unsafe { $v.to_int_unchecked::<$i>() })
+                } else {
+                    None
+                }
+            } else {
+                if $v > -1.0 && $v < ($i::MAX as $f) {
+                    Some(unsafe { $v.to_int_unchecked::<$i>() })
+                } else {
+                    None
+                }
+            }
+        }
+    };
+}
+
 pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Result<(), WasmTrap> {
     let mut ip: *const WasmInstruction = &expr[0];
     loop {
@@ -607,43 +636,51 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             }
             I32TruncF32S => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a as i32);
+                let out = trunc_float_checked!(a, f32 => i32).ok_or(WasmTrap {})?;
+                stack.push_value(out);
             }
             I32TruncF32U => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a as u32 as i32);
+                let out = trunc_float_checked!(a, f32 => u32).ok_or(WasmTrap {})?;
+                stack.push_value(out as i32);
             }
             I32TruncF64S => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a as i32);
+                let out = trunc_float_checked!(a, f64 => i32).ok_or(WasmTrap {})?;
+                stack.push_value(out);
             }
             I32TruncF64U => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a as u32 as i32);
+                let out = trunc_float_checked!(a, f64 => u32).ok_or(WasmTrap {})?;
+                stack.push_value(out as i32);
             }
             I64ExtendI32S => {
                 let a = unsafe { stack.pop_value().num.i32 };
                 stack.push_value(a as i64);
             }
             I64ExtendI32U => {
-                let a = unsafe { stack.pop_value().num.i32 };
-                stack.push_value(a as u64 as i64);
+                let a = unsafe { stack.pop_value().num.i32 } as u32;
+                stack.push_value(a as i64);
             }
             I64TruncF32S => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a as i64);
+                let out = trunc_float_checked!(a, f32 => i64).ok_or(WasmTrap {})?;
+                stack.push_value(out);
             }
             I64TruncF32U => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a as u64 as i64);
+                let out = trunc_float_checked!(a, f32 => u64).ok_or(WasmTrap {})?;
+                stack.push_value(out as i64);
             }
             I64TruncF64S => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a as i64);
+                let out = trunc_float_checked!(a, f64 => i64).ok_or(WasmTrap {})?;
+                stack.push_value(out);
             }
             I64TruncF64U => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a as u64 as i64);
+                let out = trunc_float_checked!(a, f64 => u64).ok_or(WasmTrap {})?;
+                stack.push_value(out as i64);
             }
             F32ConvertI32S => {
                 let a = unsafe { stack.pop_value().num.i32 };
@@ -723,35 +760,35 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             }
             I32TruncSatF32S => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a.trunc() as i32);
+                stack.push_value(a as i32);
             }
             I32TruncSatF32U => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a.trunc() as u32 as i32);
+                stack.push_value(a as u32 as i32);
             }
             I32TruncSatF64S => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a.trunc() as i32);
+                stack.push_value(a as i32);
             }
             I32TruncSatF64U => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a.trunc() as u32 as i32);
+                stack.push_value(a as u32 as i32);
             }
             I64TruncSatF32S => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a.trunc() as i64);
+                stack.push_value(a as i64);
             }
             I64TruncSatF32U => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                stack.push_value(a.trunc() as u64 as i64);
+                stack.push_value(a as u64 as i64);
             }
             I64TruncSatF64S => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a.trunc() as i64);
+                stack.push_value(a as i64);
             }
             I64TruncSatF64U => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                stack.push_value(a.trunc() as u64 as i64);
+                stack.push_value(a as u64 as i64);
             }
             TableGet { table_idx } => {
                 let i = stack.pop_value();
@@ -812,15 +849,12 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let winst = store.instances.resolve(frame.winst_id);
                 let tableaddr_dst = winst.addr_of(*dst);
                 let tableaddr_src = winst.addr_of(*src);
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
-                let s = unsafe { stack.pop_value().num.i32 } as usize;
-                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 if tableaddr_dst == tableaddr_src {
                     let table = store.tables.resolve_mut(tableaddr_dst);
-                    if s.checked_add(n).ok_or(WasmTrap {})? > table.elems.len() {
-                        return Err(WasmTrap {});
-                    }
-                    if d.checked_add(n).ok_or(WasmTrap {})? > table.elems.len() {
+                    if s.max(d) + n > table.elems.len() {
                         return Err(WasmTrap {});
                     }
                     unsafe {
@@ -833,10 +867,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 } else {
                     let (table_dst, table_src) =
                         store.tables.resolve_multi_mut(tableaddr_dst, tableaddr_src);
-                    if s.checked_add(n).ok_or(WasmTrap {})? > table_src.elems.len() {
+                    if s + n > table_src.elems.len() {
                         return Err(WasmTrap {});
                     }
-                    if d.checked_add(n).ok_or(WasmTrap {})? > table_dst.elems.len() {
+                    if d + n > table_dst.elems.len() {
                         return Err(WasmTrap {});
                     }
                     (&mut table_dst.elems[d..(d + n)])
@@ -847,17 +881,17 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 table_idx,
                 elem_idx,
             } => {
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
-                let s = unsafe { stack.pop_value().num.i32 } as usize;
-                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let frame = stack.current_frame();
                 let winst = store.instances.resolve(frame.winst_id);
                 let table = store.tables.resolve_mut(winst.addr_of(*table_idx));
                 let elem = store.elems.resolve(winst.addr_of(*elem_idx));
-                if d.checked_add(n).ok_or(WasmTrap {})? > table.elems.len() {
+                if d + n > table.elems.len() {
                     return Err(WasmTrap {});
                 }
-                if s.checked_add(n).ok_or(WasmTrap {})? > elem.elem.len() {
+                if s + n > elem.elem.len() {
                     return Err(WasmTrap {});
                 }
                 (&mut table.elems[d..(d + n)]).copy_from_slice(&elem.elem[s..(s + n)]);
@@ -1100,18 +1134,18 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 mem_store!(f64 => f64, stack, store, memarg);
             }
             MemoryInit { data_idx } => {
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
-                let s = unsafe { stack.pop_value().num.i32 } as usize;
-                let d = unsafe { stack.pop_value().num.i32 } as usize;
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let frame = stack.current_frame();
                 let winst = store.instances.resolve(frame.winst_id);
                 let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
                 let data = store.datas.resolve(winst.addr_of(*data_idx));
                 let data_bytes = data.data.ok_or(WasmTrap {})?;
-                if d.checked_add(n).ok_or(WasmTrap {})? > mem.data.len() {
+                if d + n > mem.data.len() {
                     return Err(WasmTrap {});
                 }
-                if s.checked_add(n).ok_or(WasmTrap {})? > data_bytes.len() {
+                if s + n > data_bytes.len() {
                     return Err(WasmTrap {});
                 }
                 (&mut mem.data[d..(d + n)]).copy_from_slice(&data_bytes[s..(s + n)]);
@@ -1145,10 +1179,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let frame = stack.current_frame();
                 let winst = store.instances.resolve(frame.winst_id);
                 let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let val = unsafe { stack.pop_value().num.i32 };
-                let d = unsafe { stack.pop_value().num.i32 } as usize;
-                if d.checked_add(n).ok_or(WasmTrap {})? > mem.data.len() {
+                let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                if d + n > mem.data.len() {
                     return Err(WasmTrap {});
                 }
                 for byte in &mut mem.data[d..(d + n)] {
@@ -1159,10 +1193,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let frame = stack.current_frame();
                 let winst = store.instances.resolve(frame.winst_id);
                 let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
-                let s = unsafe { stack.pop_value().num.i32 } as usize;
-                let d = unsafe { stack.pop_value().num.i32 } as usize;
-                if s.max(d).checked_add(n).ok_or(WasmTrap {})? > mem.data.len() {
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let s = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                if s.max(d) + n > mem.data.len() {
                     return Err(WasmTrap {});
                 }
                 unsafe {
