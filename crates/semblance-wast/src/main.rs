@@ -8,7 +8,7 @@ use semblance::module::{
 };
 use std::collections::HashMap;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::LazyLock;
 use wast::core::NanPattern;
@@ -83,10 +83,21 @@ impl WastInterpreter {
         }
     }
 
-    fn eval_wast(&mut self, wast: &mut Wast) {
+    fn eval_wast(&mut self, wast: &mut Wast, path: Option<&Path>, src: &str) {
         let len = wast.directives.len();
+        let path_str = path
+            .map(|p| p.to_string_lossy())
+            .unwrap_or(std::borrow::Cow::Borrowed("stdin"));
         for (i, directive) in wast.directives.iter_mut().enumerate() {
-            println!("running directive [{}/{}]", i, len);
+            let (line, col) = directive.span().linecol_in(src);
+            println!(
+                "running directive [{}/{}] {}:{}:{}",
+                i,
+                len,
+                path_str,
+                line + 1,
+                col,
+            );
             self.eval_directive(directive);
         }
     }
@@ -435,6 +446,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut wast: Wast = parse(&buf)?;
 
     let mut interpreter = WastInterpreter::new();
-    interpreter.eval_wast(&mut wast);
+    interpreter.eval_wast(
+        &mut wast,
+        args.wast_path.as_ref().map(|p| p.as_path()),
+        &src,
+    );
     Ok(())
 }
