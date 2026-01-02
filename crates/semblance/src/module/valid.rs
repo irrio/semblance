@@ -989,7 +989,7 @@ fn validate_instr(
         Block { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
             expr_ctx.stack().pop_result_type(&func_type.input_type)?;
-            expr_ctx.labels.push(LabelEntry {
+            expr_ctx.push_label(LabelEntry {
                 ty: func_type,
                 idx: Some(idx),
                 opcode: LabelOpcode::Block,
