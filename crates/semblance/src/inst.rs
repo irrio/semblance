@@ -83,7 +83,7 @@ impl WasmStack {
         for _ in 0..num_to_drop {
             self.value_stack.0.pop();
         }
-        for v in popped {
+        for v in popped.into_iter().rev() {
             self.value_stack.0.push(v);
         }
     }
