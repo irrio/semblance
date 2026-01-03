@@ -85,6 +85,29 @@ pub enum WasmValueType {
     Ref(WasmRefType),
 }
 
+impl WasmValueType {
+    pub fn is_num(self) -> bool {
+        match self {
+            WasmValueType::Num(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_vec(self) -> bool {
+        match self {
+            WasmValueType::Vec(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_ref(self) -> bool {
+        match self {
+            WasmValueType::Ref(_) => true,
+            _ => false,
+        }
+    }
+}
+
 macro_rules! t {
     (i32) => {
         crate::module::WasmValueType::Num(crate::module::WasmNumType::I32)
@@ -146,6 +169,7 @@ pub trait Immediates: std::fmt::Debug {
     type BlockImmediates: std::fmt::Debug;
     type LoopImmediates: std::fmt::Debug;
     type IfImmediates: std::fmt::Debug;
+    type BreakImmediates: std::fmt::Debug;
 }
 
 #[derive(Debug)]
@@ -155,6 +179,7 @@ impl Immediates for NoImmediates {
     type BlockImmediates = ();
     type LoopImmediates = ();
     type IfImmediates = ();
+    type BreakImmediates = ();
 }
 
 #[derive(Debug)]
@@ -166,10 +191,17 @@ pub struct VerifiedIfImmediates {
     pub else_off: Option<WasmRelativeJumpOffset>,
 }
 
+#[derive(Debug)]
+pub struct VerifiedBreakImmediates {
+    pub arity: u16,
+    pub drop: u16,
+}
+
 impl Immediates for VerifiedImmediates {
     type BlockImmediates = WasmRelativeJumpOffset;
     type LoopImmediates = WasmRelativeJumpOffset;
     type IfImmediates = VerifiedIfImmediates;
+    type BreakImmediates = VerifiedBreakImmediates;
 }
 
 pub type WasmInstruction = WasmInstructionRepr<VerifiedImmediates>;
@@ -196,15 +228,19 @@ pub enum WasmInstructionRepr<I: Immediates> {
     Else,
     Break {
         label_idx: WasmLabelIdx,
+        imm: I::BreakImmediates,
     },
     BreakIf {
         label_idx: WasmLabelIdx,
+        imm: I::BreakImmediates,
     },
     BreakTable {
         labels: Box<[WasmLabelIdx]>,
-        default_label: WasmLabelIdx,
+        imm: I::BreakImmediates,
     },
-    Return,
+    Return {
+        imm: I::BreakImmediates,
+    },
     Call {
         func_idx: WasmFuncIdx,
     },

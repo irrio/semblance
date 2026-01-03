@@ -66,6 +66,9 @@ macro_rules! invoke {
                     locals: locals.into_boxed_slice(),
                     winst_id,
                 });
+                $stack.push_label(WasmLabel {
+                    instr: funcimpl.body.last().unwrap(),
+                });
                 goto!($ip, &funcimpl.body[0]);
             }
         }
@@ -975,35 +978,45 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                         break;
                     }
                 }
-                Some(ControlStackEntry::Label(_label)) => {}
+                Some(ControlStackEntry::Label(_label)) => {
+                    let end_of_func = match stack.peek_control() {
+                        Some(ControlStackEntry::Frame(_)) => true,
+                        _ => false,
+                    };
+                    if end_of_func {
+                        let _frame = stack.pop_control();
+                        if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
+                            goto!(ip, label.instr);
+                        } else {
+                            break;
+                        }
+                    }
+                }
                 None => break,
             },
-            Break { label_idx } => {
+            Break { label_idx, imm } => {
                 let label = stack.pop_label(*label_idx);
+                stack.truncate_values_within(imm, None);
                 goto!(ip, label.instr);
             }
-            BreakIf { label_idx } => {
+            BreakIf { label_idx, imm } => {
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
                     let label = stack.pop_label(*label_idx);
+                    stack.truncate_values_within(imm, None);
                     goto!(ip, label.instr);
                 }
             }
-            BreakTable {
-                labels,
-                default_label,
-            } => {
-                let i = unsafe { stack.pop_value().num.i32 };
-                let label_idx = if (i as usize) < labels.len() {
-                    &labels[i as usize]
-                } else {
-                    default_label
-                };
-                let label = stack.pop_label(*label_idx);
+            BreakTable { labels, imm } => {
+                let i = unsafe { stack.pop_value().num.i32 } as u32 as usize;
+                let label_idx = labels[i.min(labels.len() - 1)];
+                let label = stack.pop_label(label_idx);
+                stack.truncate_values_within(imm, Some(label_idx));
                 goto!(ip, label.instr);
             }
-            Return => {
+            Return { imm } => {
                 stack.pop_frame();
+                stack.truncate_values_within(imm, None);
                 if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
                     goto!(ip, label.instr);
                 } else {

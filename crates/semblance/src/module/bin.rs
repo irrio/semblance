@@ -581,24 +581,26 @@ fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmInstructionRaw
         0x0B => Ok((ExprEnd, bytes)),
         0x0C => {
             let (label_idx, bytes) = decode_label_idx(bytes)?;
-            Ok((Break { label_idx }, bytes))
+            Ok((Break { label_idx, imm: () }, bytes))
         }
         0x0D => {
             let (label_idx, bytes) = decode_label_idx(bytes)?;
-            Ok((BreakIf { label_idx }, bytes))
+            Ok((BreakIf { label_idx, imm: () }, bytes))
         }
         0x0E => {
             let (labels, bytes) = decode_label_indices(bytes)?;
             let (default_label, bytes) = decode_label_idx(bytes)?;
+            let mut all_labels = labels.into_vec();
+            all_labels.push(default_label);
             Ok((
                 BreakTable {
-                    labels,
-                    default_label,
+                    labels: all_labels.into_boxed_slice(),
+                    imm: (),
                 },
                 bytes,
             ))
         }
-        0x0F => Ok((Return, bytes)),
+        0x0F => Ok((Return { imm: () }, bytes)),
         0x10 => {
             let (func_idx, bytes) = decode_func_idx(bytes)?;
             Ok((Call { func_idx }, bytes))

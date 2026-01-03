@@ -51,7 +51,7 @@ pub enum WasmValidationError {
 
 pub type WasmValidationResult<T> = Result<T, WasmValidationError>;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum MaybeUntyped {
     UnknownType,
     KnownType(WasmValueType),
@@ -80,10 +80,10 @@ pub fn validate(wmod: WasmModuleRaw) -> WasmValidationResult<WasmModule> {
 
     // C
     wmod_ctx.include_internal_globals(&wmod);
-    let mut ctrl_flow_maps = Vec::with_capacity(wmod.funcs.len());
+    let mut side_tables = Vec::with_capacity(wmod.funcs.len());
     for func in &wmod.funcs {
-        let ctrl_flow_map = validate_func(func, &wmod_ctx)?;
-        ctrl_flow_maps.push(ctrl_flow_map);
+        let side_table = validate_func(func, &wmod_ctx)?;
+        side_tables.push(side_table);
     }
     if let Some(start) = wmod.start {
         validate_start_func(start, &wmod_ctx)?;
@@ -101,19 +101,36 @@ pub fn validate(wmod: WasmModuleRaw) -> WasmValidationResult<WasmModule> {
 
     validate_export_names(&wmod)?;
 
-    Ok(reencode_module_with_control_flow_maps(wmod, ctrl_flow_maps))
+    Ok(reencode_module_with_side_tables(wmod, side_tables))
 }
 
 type ControlFlowMap = HashMap<WasmInstructionIdx, WasmInstructionIdx>;
+type BreakImmediatesMap = HashMap<WasmInstructionIdx, VerifiedBreakImmediates>;
 
-fn reencode_module_with_control_flow_maps(
+pub struct ValidationSideTables {
+    pub end_control_flow: ControlFlowMap,
+    pub else_control_flow: ControlFlowMap,
+    pub break_immediates: BreakImmediatesMap,
+}
+
+impl ValidationSideTables {
+    pub fn new() -> Self {
+        ValidationSideTables {
+            end_control_flow: HashMap::new(),
+            else_control_flow: HashMap::new(),
+            break_immediates: HashMap::new(),
+        }
+    }
+}
+
+fn reencode_module_with_side_tables(
     wmod: WasmModuleRaw,
-    maps: Vec<(ControlFlowMap, ControlFlowMap)>,
+    side_tables: Vec<ValidationSideTables>,
 ) -> WasmModule {
     WasmModule {
         version: wmod.version,
         types: wmod.types,
-        funcs: reencode_funcs_with_control_flow_maps(wmod.funcs, maps),
+        funcs: reencode_funcs_with_side_tables(wmod.funcs, side_tables),
         tables: wmod.tables,
         mems: wmod.mems,
         globals: wmod
@@ -154,55 +171,53 @@ fn reencode_const_expr(expr: Box<WasmExprRaw>) -> Box<WasmExpr> {
         .collect()
 }
 
-fn reencode_funcs_with_control_flow_maps(
+fn reencode_funcs_with_side_tables(
     funcs: Box<[WasmFunc<WasmInstructionRaw>]>,
-    maps: Vec<(ControlFlowMap, ControlFlowMap)>,
+    side_tables: Vec<ValidationSideTables>,
 ) -> Box<[WasmFunc]> {
     funcs
         .into_iter()
-        .zip(maps)
-        .map(|(func, (end_map, else_map))| {
-            reencode_func_with_control_flow_map(func, end_map, else_map)
-        })
+        .zip(side_tables)
+        .map(|(func, side_table)| reencode_func_with_side_tables(func, side_table))
         .collect()
 }
 
-fn reencode_func_with_control_flow_map(
+fn reencode_func_with_side_tables(
     func: WasmFunc<WasmInstructionRaw>,
-    end_map: ControlFlowMap,
-    else_map: ControlFlowMap,
+    side_tables: ValidationSideTables,
 ) -> WasmFunc {
     WasmFunc {
         type_idx: func.type_idx,
         locals: func.locals,
-        body: reencode_expr_with_control_flow_map(func.body, end_map, else_map),
+        body: reencode_expr_with_side_tables(func.body, side_tables),
     }
 }
 
-fn reencode_expr_with_control_flow_map(
+fn reencode_expr_with_side_tables(
     expr: Box<WasmExprRaw>,
-    mut end_map: ControlFlowMap,
-    mut else_map: ControlFlowMap,
+    mut side_tables: ValidationSideTables,
 ) -> Box<WasmExpr> {
     expr.into_iter()
         .enumerate()
         .map(|(i, instr)| {
             let idx = WasmInstructionIdx(i as u32);
-            reencode_instr_with_control_flow_map(
+            reencode_instr_with_side_tables(
                 instr,
                 idx,
-                end_map.remove(&idx),
-                else_map.remove(&idx),
+                side_tables.end_control_flow.remove(&idx),
+                side_tables.else_control_flow.remove(&idx),
+                side_tables.break_immediates.remove(&idx),
             )
         })
         .collect()
 }
 
-fn reencode_instr_with_control_flow_map(
+fn reencode_instr_with_side_tables(
     instr: WasmInstructionRaw,
     ic: WasmInstructionIdx,
     end_ic: Option<WasmInstructionIdx>,
     else_ic: Option<WasmInstructionIdx>,
+    break_immediates: Option<VerifiedBreakImmediates>,
 ) -> WasmInstruction {
     use WasmInstructionRepr::*;
     match instr {
@@ -223,6 +238,21 @@ fn reencode_instr_with_control_flow_map(
         Loop { block_type, imm: _ } => Loop {
             block_type,
             imm: calculate_relative_jump_offset(ic, end_ic.expect("missing control flow mapping")),
+        },
+        Break { label_idx, imm: _ } => Break {
+            label_idx,
+            imm: break_immediates.expect("missing break immediates"),
+        },
+        BreakIf { label_idx, imm: _ } => BreakIf {
+            label_idx,
+            imm: break_immediates.expect("missing break immediates"),
+        },
+        BreakTable { labels, imm: _ } => BreakTable {
+            labels,
+            imm: break_immediates.expect("missing break immediates"),
+        },
+        Return { imm: _ } => Return {
+            imm: break_immediates.expect("missing break immediates"),
         },
         i @ _ => unsafe { std::mem::transmute(i) },
     }
@@ -321,7 +351,7 @@ fn validate_start_func(start: WasmFuncIdx, wmod_ctx: &ModuleContext) -> WasmVali
 fn validate_func(
     func: &WasmFunc<WasmInstructionRaw>,
     wmod_ctx: &ModuleContext,
-) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
+) -> WasmValidationResult<ValidationSideTables> {
     let expr_ctx = ExprContext::for_func(&wmod_ctx, func)?;
     validate_instr_sequence(&func.body, &wmod_ctx, expr_ctx)
 }
@@ -709,8 +739,8 @@ fn validate_instr(
                 let stack = expr_ctx.stack();
                 stack.pop(t!(i32))?;
                 let t = stack.pop_num_or_vec()?;
-                stack.pop(t)?;
-                stack.push(t);
+                stack.pop_dyn(t)?;
+                stack.push_dyn(t);
             }
             1 => {
                 let t = value_types[0];
@@ -985,7 +1015,9 @@ fn validate_instr(
         }
         // -- control instructions -- //
         Nop => {}
-        Unreachable => expr_ctx.unreachable(),
+        Unreachable => {
+            expr_ctx.unreachable();
+        }
         Block { block_type, imm: _ } => {
             let func_type = validate_block_type(block_type, wmod_ctx)?;
             expr_ctx.stack().pop_result_type(&func_type.input_type)?;
@@ -1020,17 +1052,24 @@ fn validate_instr(
                 unreachable: false,
             });
         }
-        Break { label_idx } => {
+        Break { label_idx, imm: _ } => {
             let label_entry = expr_ctx
                 .labels
                 .peek(*label_idx)
                 .ok_or(WasmValidationError::InvalidLabelIdx(label_idx.0))?;
+            let ty = label_entry.label_types();
+            let arity = ty.len().try_into().expect("arity immediate too large");
+            expr_ctx.stack().pop_result_type(ty)?;
+            let drop = expr_ctx
+                .unreachable()
+                .try_into()
+                .expect("drop immediate too large");
             expr_ctx
-                .stack()
-                .pop_result_type(label_entry.label_types())?;
-            expr_ctx.unreachable();
+                .side_tables
+                .break_immediates
+                .insert(idx, VerifiedBreakImmediates { arity, drop });
         }
-        BreakIf { label_idx } => {
+        BreakIf { label_idx, imm: _ } => {
             let label_entry = expr_ctx
                 .labels
                 .peek(*label_idx)
@@ -1038,21 +1077,35 @@ fn validate_instr(
             let stack = expr_ctx.stack();
             stack.pop(t!(i32))?;
             let label_types = label_entry.label_types();
+            let arity = label_types
+                .len()
+                .try_into()
+                .expect("arity immediate too large");
             stack.pop_result_type(label_types)?;
+            let drop = (stack.depth() - label_entry.min_stack_depth)
+                .try_into()
+                .expect("drop immediate too large");
             stack.push_result_type(label_types);
+            expr_ctx
+                .side_tables
+                .break_immediates
+                .insert(idx, VerifiedBreakImmediates { arity, drop });
         }
         BreakTable {
-            labels,
-            default_label,
+            labels: all_labels,
+            imm: _,
         } => {
+            let default_label = all_labels.last().unwrap();
+            let labels = &all_labels[0..all_labels.len() - 1];
+            let default_label_entry = expr_ctx
+                .labels
+                .peek(*default_label)
+                .ok_or(WasmValidationError::InvalidLabelIdx(default_label.0))?;
+            let ty = default_label_entry.label_types();
+            let arity = ty.len();
             {
                 let stack = expr_ctx.stack();
                 stack.pop(t!(i32))?;
-                let default_label_entry = expr_ctx
-                    .labels
-                    .peek(*default_label)
-                    .ok_or(WasmValidationError::InvalidLabelIdx(default_label.0))?;
-                let arity = default_label_entry.label_types().len();
                 for label_idx in labels {
                     let label_entry = expr_ctx
                         .labels
@@ -1068,15 +1121,30 @@ fn validate_instr(
                     stack.pop_result_type(types)?;
                     stack.push_result_type(types);
                 }
-                stack.pop_result_type(&default_label_entry.label_types())?;
+                stack.pop_result_type(ty)?;
             }
-            expr_ctx.unreachable();
+            let drop = expr_ctx.unreachable();
+            expr_ctx.side_tables.break_immediates.insert(
+                idx,
+                VerifiedBreakImmediates {
+                    arity: arity.try_into().expect("arity immediate too large"),
+                    drop: drop.try_into().expect("drop immediate too large"),
+                },
+            );
         }
-        Return => match expr_ctx.ret {
+        Return { imm: _ } => match expr_ctx.ret {
             None => return Err(WasmValidationError::InvalidReturn),
             Some(ref result_type) => {
                 expr_ctx.stack().pop_result_type(result_type)?;
-                expr_ctx.unreachable();
+                let arity = result_type.len();
+                let drop = expr_ctx.unreachable();
+                expr_ctx.side_tables.break_immediates.insert(
+                    idx,
+                    VerifiedBreakImmediates {
+                        arity: arity.try_into().expect("arity immediate too large"),
+                        drop: drop.try_into().expect("drop immediate too large"),
+                    },
+                );
             }
         },
         Call { func_idx } => {
@@ -1121,7 +1189,8 @@ fn validate_instr(
                 unreachable: false,
             });
             expr_ctx
-                .else_control_flow_map
+                .side_tables
+                .else_control_flow
                 .insert(label_entry.idx.unwrap(), idx);
         }
         ExprEnd => {
@@ -1130,7 +1199,7 @@ fn validate_instr(
                 .stack()
                 .push_result_type(&label_entry.ty.output_type);
             if let Some(start_idx) = label_entry.idx {
-                expr_ctx.end_control_flow_map.insert(start_idx, idx);
+                expr_ctx.side_tables.end_control_flow.insert(start_idx, idx);
             }
         }
     }
@@ -1141,11 +1210,11 @@ fn validate_instr_sequence(
     instrs: &WasmExprRaw,
     wmod_ctx: &ModuleContext,
     mut expr_ctx: ExprContext,
-) -> WasmValidationResult<(ControlFlowMap, ControlFlowMap)> {
+) -> WasmValidationResult<ValidationSideTables> {
     for (i, op) in instrs.iter().enumerate() {
         validate_instr(op, wmod_ctx, &mut expr_ctx, WasmInstructionIdx(i as u32))?;
     }
-    Ok(expr_ctx.consume_control_flow_maps())
+    Ok(expr_ctx.consume_side_tables())
 }
 
 fn validate_global_is_const(
@@ -1271,6 +1340,9 @@ mod context {
         }
 
         pub fn peek(&self, label_idx: WasmLabelIdx) -> Option<&LabelEntry> {
+            if self.0.len() < label_idx.0 as usize + 1 {
+                return None;
+            }
             let idx = (self.0.len() - 1) - label_idx.0 as usize;
             self.0.get(idx)
         }
@@ -1281,8 +1353,7 @@ mod context {
         pub locals: Vec<WasmValueType>,
         pub labels: LabelStack,
         pub ret: Option<WasmResultType>,
-        pub end_control_flow_map: ControlFlowMap,
-        pub else_control_flow_map: ControlFlowMap,
+        pub side_tables: ValidationSideTables,
     }
 
     impl ExprContext {
@@ -1302,8 +1373,7 @@ mod context {
                 stack: TypeStack::empty(),
                 labels: LabelStack::with_func_type(func_type.clone()),
                 ret: Some(func_type.output_type.clone()),
-                end_control_flow_map: HashMap::new(),
-                else_control_flow_map: HashMap::new(),
+                side_tables: ValidationSideTables::new(),
             })
         }
 
@@ -1314,13 +1384,12 @@ mod context {
                 locals: vec![],
                 labels: LabelStack::with_result_type(return_type.clone()),
                 ret: None,
-                end_control_flow_map: HashMap::new(),
-                else_control_flow_map: HashMap::new(),
+                side_tables: ValidationSideTables::new(),
             }
         }
 
-        pub fn consume_control_flow_maps(self) -> (ControlFlowMap, ControlFlowMap) {
-            (self.end_control_flow_map, self.else_control_flow_map)
+        pub fn consume_side_tables(self) -> ValidationSideTables {
+            self.side_tables
         }
 
         pub fn stack(&self) -> TypeStack {
@@ -1353,13 +1422,15 @@ mod context {
             self.labels.push(label_entry);
         }
 
-        pub fn unreachable(&mut self) {
+        pub fn unreachable(&mut self) -> usize {
             let label_entry = self.labels.peek_top_mut().expect("no label!");
+            let dropped = self.stack.depth() - label_entry.min_stack_depth;
             self.stack
                 .stack
                 .borrow_mut()
-                .resize_with(label_entry.min_stack_depth, || t!(i32));
+                .truncate(label_entry.min_stack_depth);
             label_entry.unreachable = true;
+            dropped
         }
     }
 
@@ -1487,7 +1558,7 @@ mod context {
 }
 
 pub struct TypeStack {
-    stack: Rc<RefCell<Vec<WasmValueType>>>,
+    stack: Rc<RefCell<Vec<MaybeUntyped>>>,
     min_depth: usize,
     unreachable: bool,
 }
@@ -1510,6 +1581,10 @@ impl TypeStack {
     }
 
     pub fn push(&self, t: WasmValueType) {
+        self.stack.borrow_mut().push(MaybeUntyped::KnownType(t))
+    }
+
+    pub fn push_dyn(&self, t: MaybeUntyped) {
         self.stack.borrow_mut().push(t)
     }
 
@@ -1521,7 +1596,7 @@ impl TypeStack {
 
     fn pop_checked(&self) -> Option<MaybeUntyped> {
         if self.depth() > self.min_depth {
-            self.stack.borrow_mut().pop().map(MaybeUntyped::KnownType)
+            self.stack.borrow_mut().pop()
         } else if self.unreachable {
             Some(MaybeUntyped::UnknownType)
         } else {
@@ -1539,10 +1614,11 @@ impl TypeStack {
         Ok(())
     }
 
-    pub fn pop_num_or_vec(&self) -> WasmValidationResult<WasmValueType> {
+    pub fn pop_num_or_vec(&self) -> WasmValidationResult<MaybeUntyped> {
         match self.pop_checked() {
-            Some(MaybeUntyped::KnownType(t @ WasmValueType::Num(_))) => Ok(t),
-            Some(MaybeUntyped::KnownType(t @ WasmValueType::Vec(_))) => Ok(t),
+            Some(t @ MaybeUntyped::KnownType(WasmValueType::Num(_))) => Ok(t),
+            Some(t @ MaybeUntyped::KnownType(WasmValueType::Vec(_))) => Ok(t),
+            Some(t @ MaybeUntyped::UnknownType) => Ok(t),
             actual => Err(WasmValidationError::MismatchedType {
                 actual,
                 // TODO: should be num|vec
@@ -1559,9 +1635,17 @@ impl TypeStack {
         }
     }
 
+    pub fn pop_dyn(&self, expected: MaybeUntyped) -> WasmValidationResult<()> {
+        match expected {
+            MaybeUntyped::UnknownType => Ok(()),
+            MaybeUntyped::KnownType(t) => self.pop(t),
+        }
+    }
+
     pub fn pop_ref_type(&self) -> WasmValidationResult<()> {
         match self.pop_checked() {
             Some(MaybeUntyped::KnownType(WasmValueType::Ref(_))) => Ok(()),
+            Some(MaybeUntyped::UnknownType) => Ok(()),
             actual => Err(WasmValidationError::MismatchedType {
                 expected: WasmValueType::Ref(WasmRefType::FuncRef), // TODO represent this type better (any ref type)
                 actual,

@@ -17,6 +17,10 @@ impl WasmValueStack {
         WasmValueStack(Vec::new())
     }
 
+    pub fn depth(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn push<I: Into<WasmValue>>(&mut self, val: I) {
         self.0.push(val.into())
     }
@@ -65,6 +69,25 @@ impl WasmStack {
         out
     }
 
+    pub fn truncate_values_within(
+        &mut self,
+        br: &VerifiedBreakImmediates,
+        labelidx: Option<WasmLabelIdx>,
+    ) {
+        let mut popped = Vec::with_capacity(br.arity as usize);
+        for _ in 0..br.arity {
+            popped.push(self.value_stack.0.pop().expect("value stack underflow"));
+        }
+        let num_labels = labelidx.map(|l| l.0 + 1).unwrap_or(1);
+        let num_to_drop = br.drop as u32 * num_labels;
+        for _ in 0..num_to_drop {
+            self.value_stack.0.pop();
+        }
+        for v in popped {
+            self.value_stack.0.push(v);
+        }
+    }
+
     pub fn push_label(&mut self, label: WasmLabel) {
         self.control_stack.push(ControlStackEntry::Label(label));
     }
@@ -75,6 +98,10 @@ impl WasmStack {
 
     pub fn pop_control(&mut self) -> Option<ControlStackEntry> {
         self.control_stack.pop()
+    }
+
+    pub fn peek_control(&self) -> Option<&ControlStackEntry> {
+        self.control_stack.last()
     }
 
     pub fn pop_label(&mut self, label_idx: WasmLabelIdx) -> WasmLabel {
@@ -302,6 +329,9 @@ impl WasmStore {
                 stack.push_frame(WasmFrame {
                     locals: locals.into_boxed_slice(),
                     winst_id,
+                });
+                stack.push_label(WasmLabel {
+                    instr: func.body.last().expect("func body has no end instr"),
                 });
                 exec(&mut stack, self, &func.body)?;
                 let mut out = Vec::with_capacity(ty.output_type.0.len());

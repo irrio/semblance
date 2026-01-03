@@ -1,8 +1,8 @@
 use semblance::inst::instantiate::{WasmInstantiationError, WasmInstantiationResult};
 use semblance::inst::table::WasmInstanceAddr;
 use semblance::inst::{
-    DynamicWasmResult, WasmExternVal, WasmMemInst, WasmNumValue, WasmRefValue, WasmResult,
-    WasmStore, WasmTrap, WasmValue,
+    DynamicWasmResult, WasmExternAddr, WasmExternVal, WasmMemInst, WasmNumValue, WasmRefValue,
+    WasmResult, WasmStore, WasmTrap, WasmValue,
 };
 use semblance::module::{
     WasmFromBytesError, WasmFuncType, WasmGlobalMutability, WasmGlobalType, WasmLimits,
@@ -507,8 +507,16 @@ impl WastInterpreter {
                     assert_nan_pattern_64(nan_pattern, unsafe { val.num.f64 });
                 }
                 wast::core::WastRetCore::V128(_v128_pattern) => todo!(),
-                wast::core::WastRetCore::RefNull(_heap_type) => todo!(),
-                wast::core::WastRetCore::RefExtern(_) => todo!(),
+                wast::core::WastRetCore::RefNull(_heap_type) => {
+                    assert!(ty.is_ref());
+                    assert_eq!(0, unsafe { val.ref_.extern_.0 });
+                }
+                wast::core::WastRetCore::RefExtern(addr) => {
+                    assert_eq!(*ty, WasmValueType::Ref(WasmRefType::ExternRef));
+                    if let Some(addr) = addr {
+                        assert_eq!(*addr, unsafe { val.ref_.extern_.0 });
+                    }
+                }
                 wast::core::WastRetCore::RefHost(_) => todo!(),
                 wast::core::WastRetCore::RefFunc(_index) => todo!(),
                 wast::core::WastRetCore::RefAny => todo!(),
@@ -581,8 +589,14 @@ impl WastInterpreter {
                     },
                 },
                 wast::core::WastArgCore::V128(_v) => todo!("vec arg"),
-                wast::core::WastArgCore::RefNull(_heap_type) => todo!("ref null arg"),
-                wast::core::WastArgCore::RefExtern(_) => todo!("externref arg"),
+                wast::core::WastArgCore::RefNull(_heap_type) => WasmValue {
+                    ref_: WasmRefValue::NULL,
+                },
+                wast::core::WastArgCore::RefExtern(addr) => WasmValue {
+                    ref_: WasmRefValue {
+                        extern_: WasmExternAddr(*addr),
+                    },
+                },
                 wast::core::WastArgCore::RefHost(_) => todo!("hostref arg"),
             }
         } else {
