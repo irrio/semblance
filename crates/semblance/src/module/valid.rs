@@ -39,6 +39,7 @@ pub enum WasmValidationError {
     InvalidCallIndirect,
     UnopenedBlock,
     InvalidElse,
+    MissingRequiredElseBlock,
     UnexpectedStackDepth {
         expected: usize,
         actual: usize,
@@ -1195,6 +1196,12 @@ fn validate_instr(
         }
         ExprEnd => {
             let label_entry = expr_ctx.pop_label()?;
+            if label_entry.opcode == LabelOpcode::If {
+                // no else block, typecheck empty expression
+                let stack = expr_ctx.stack();
+                stack.push_result_type(&label_entry.ty.input_type);
+                stack.pop_result_type(&label_entry.ty.output_type)?;
+            }
             expr_ctx
                 .stack()
                 .push_result_type(&label_entry.ty.output_type);
