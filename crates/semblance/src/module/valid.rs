@@ -1367,7 +1367,7 @@ mod context {
         pub fn from_module(wmod: &'wmod WasmModuleRaw) -> WasmValidationResult<Self> {
             Ok(ModuleContext {
                 types: context_types(wmod),
-                funcs: context_funcs(wmod),
+                funcs: context_funcs(wmod)?,
                 tables: context_tables(wmod),
                 memories: context_mems(wmod),
                 globals: context_globals(wmod),
@@ -1387,18 +1387,25 @@ mod context {
         wmod.types.as_ref()
     }
 
-    fn context_funcs(wmod: &WasmModuleRaw) -> Vec<&WasmFuncType> {
+    fn context_funcs(wmod: &WasmModuleRaw) -> WasmValidationResult<Vec<&WasmFuncType>> {
         let mut funcs = Vec::new();
-        funcs.extend(wmod.imports.iter().filter_map(|i| match i.desc {
-            WasmImportDesc::Func(ref t) => Some(&wmod.types[t.0 as usize]),
-            _ => None,
-        }));
-        funcs.extend(
-            wmod.funcs
-                .iter()
-                .map(|f| &wmod.types[f.type_idx.0 as usize]),
-        );
-        funcs
+        for import in &wmod.imports {
+            if let WasmImportDesc::Func(ref typeidx) = import.desc {
+                let ty = wmod
+                    .types
+                    .get(typeidx.0 as usize)
+                    .ok_or(WasmValidationError::InvalidTypeIdx(typeidx.0))?;
+                funcs.push(ty);
+            }
+        }
+        for func in &wmod.funcs {
+            let ty = wmod
+                .types
+                .get(func.type_idx.0 as usize)
+                .ok_or(WasmValidationError::InvalidTypeIdx(func.type_idx.0))?;
+            funcs.push(ty);
+        }
+        Ok(funcs)
     }
 
     fn context_tables(wmod: &WasmModuleRaw) -> Vec<&WasmTableType> {

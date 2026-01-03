@@ -1,10 +1,13 @@
-use semblance::inst::instantiate::WasmInstantiationResult;
+use semblance::inst::instantiate::{WasmInstantiationError, WasmInstantiationResult};
 use semblance::inst::table::WasmInstanceAddr;
 use semblance::inst::{
-    DynamicWasmResult, WasmExternVal, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
+    DynamicWasmResult, WasmExternVal, WasmMemInst, WasmNumValue, WasmRefValue, WasmResult,
+    WasmStore, WasmTrap, WasmValue,
 };
 use semblance::module::{
-    WasmFromBytesError, WasmFuncType, WasmModule, WasmNumType, WasmResultType, WasmValueType,
+    WasmFromBytesError, WasmFuncType, WasmGlobalMutability, WasmGlobalType, WasmLimits,
+    WasmMemType, WasmModule, WasmNumType, WasmRefType, WasmResultType, WasmTableType,
+    WasmValueType,
 };
 use std::collections::HashMap;
 use std::io::Read;
@@ -64,6 +67,121 @@ fn hostcall_print_i32(
     Box::new([])
 }
 
+static HOSTCALL_PRINT_I64_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I64)])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print_i64(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    println!("{}", unsafe { args[0].num.i64 });
+    Box::new([])
+}
+
+static HOSTCALL_PRINT_F32_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::F32)])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print_f32(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    println!("{}", unsafe { args[0].num.f32 });
+    Box::new([])
+}
+
+static HOSTCALL_PRINT_F64_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::F64)])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print_f64(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    println!("{}", unsafe { args[0].num.f64 });
+    Box::new([])
+}
+
+static HOSTCALL_PRINT_I32_F32_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32),
+        WasmValueType::Num(WasmNumType::F32),
+    ])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print_i32_f32(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    println!("{} {}", unsafe { args[0].num.i32 }, unsafe {
+        args[1].num.f32
+    });
+    Box::new([])
+}
+
+static HOSTCALL_PRINT_F64_F64_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::F64),
+        WasmValueType::Num(WasmNumType::F64),
+    ])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print_f64_f64(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    println!("{} {}", unsafe { args[0].num.f64 }, unsafe {
+        args[1].num.f64
+    });
+    Box::new([])
+}
+
+static HOST_GLOBAL_I32_TYPE: LazyLock<WasmGlobalType> = LazyLock::new(|| WasmGlobalType {
+    mutability: WasmGlobalMutability::Immutable,
+    val_type: WasmValueType::Num(WasmNumType::I32),
+});
+
+static HOST_GLOBAL_I64_TYPE: LazyLock<WasmGlobalType> = LazyLock::new(|| WasmGlobalType {
+    mutability: WasmGlobalMutability::Immutable,
+    val_type: WasmValueType::Num(WasmNumType::I64),
+});
+
+static HOST_GLOBAL_F32_TYPE: LazyLock<WasmGlobalType> = LazyLock::new(|| WasmGlobalType {
+    mutability: WasmGlobalMutability::Immutable,
+    val_type: WasmValueType::Num(WasmNumType::F32),
+});
+
+static HOST_GLOBAL_F64_TYPE: LazyLock<WasmGlobalType> = LazyLock::new(|| WasmGlobalType {
+    mutability: WasmGlobalMutability::Immutable,
+    val_type: WasmValueType::Num(WasmNumType::F64),
+});
+
+static HOST_TABLE_TYPE: LazyLock<WasmTableType> = LazyLock::new(|| WasmTableType {
+    limits: WasmLimits {
+        min: 10,
+        max: Some(20),
+    },
+    ref_type: WasmRefType::FuncRef,
+});
+
+static HOST_MEM_TYPE: LazyLock<WasmMemType> = LazyLock::new(|| WasmMemType {
+    limits: WasmLimits {
+        min: 1,
+        max: Some(2),
+    },
+});
+
 impl WastInterpreter {
     fn new() -> Self {
         let mut store = WasmStore::new();
@@ -72,6 +190,84 @@ impl WastInterpreter {
             "print_i32",
             WasmExternVal::Func(
                 store.alloc_hostfunc(&*HOSTCALL_PRINT_I32_TYPE, &hostcall_print_i32),
+            ),
+        );
+        spectest_exports.insert(
+            "print_i64",
+            WasmExternVal::Func(
+                store.alloc_hostfunc(&*HOSTCALL_PRINT_I64_TYPE, &hostcall_print_i64),
+            ),
+        );
+        spectest_exports.insert(
+            "print_f32",
+            WasmExternVal::Func(
+                store.alloc_hostfunc(&*HOSTCALL_PRINT_F32_TYPE, &hostcall_print_f32),
+            ),
+        );
+        spectest_exports.insert(
+            "print_f64",
+            WasmExternVal::Func(
+                store.alloc_hostfunc(&*HOSTCALL_PRINT_F64_TYPE, &hostcall_print_f64),
+            ),
+        );
+        spectest_exports.insert(
+            "print_i32_f32",
+            WasmExternVal::Func(
+                store.alloc_hostfunc(&*HOSTCALL_PRINT_I32_F32_TYPE, &hostcall_print_i32_f32),
+            ),
+        );
+        spectest_exports.insert(
+            "print_f64_f64",
+            WasmExternVal::Func(
+                store.alloc_hostfunc(&*HOSTCALL_PRINT_F64_F64_TYPE, &hostcall_print_f64_f64),
+            ),
+        );
+        spectest_exports.insert(
+            "global_i32",
+            WasmExternVal::Global(store.alloc_host_global(
+                &*HOST_GLOBAL_I32_TYPE,
+                WasmValue {
+                    num: { WasmNumValue { i32: 666 } },
+                },
+            )),
+        );
+        spectest_exports.insert(
+            "global_i64",
+            WasmExternVal::Global(store.alloc_host_global(
+                &*HOST_GLOBAL_I64_TYPE,
+                WasmValue {
+                    num: { WasmNumValue { i64: 666 } },
+                },
+            )),
+        );
+        spectest_exports.insert(
+            "global_f32",
+            WasmExternVal::Global(store.alloc_host_global(
+                &*HOST_GLOBAL_F32_TYPE,
+                WasmValue {
+                    num: { WasmNumValue { f32: 666.6 } },
+                },
+            )),
+        );
+        spectest_exports.insert(
+            "global_f64",
+            WasmExternVal::Global(store.alloc_host_global(
+                &*HOST_GLOBAL_F64_TYPE,
+                WasmValue {
+                    num: { WasmNumValue { f64: 666.6 } },
+                },
+            )),
+        );
+        spectest_exports.insert(
+            "table",
+            WasmExternVal::Table(
+                store.alloc_host_table(&*HOST_TABLE_TYPE, vec![WasmRefValue::NULL; 10]),
+            ),
+        );
+        spectest_exports.insert(
+            "memory",
+            WasmExternVal::Mem(
+                store.alloc_host_mem(&*HOST_MEM_TYPE, vec![0; WasmMemInst::PAGE_SIZE]),
             ),
         );
         WastInterpreter {
@@ -204,7 +400,8 @@ impl WastInterpreter {
                 let externval = self
                     .spectest_exports
                     .get(import.item_name.0.as_ref())
-                    .expect("unknown spectest export");
+                    // TODO: make this error better, should be a link error
+                    .ok_or(WasmInstantiationError::InvalidExternval)?;
                 externvals.push(*externval);
             } else {
                 let dep_inst_id = self
@@ -214,7 +411,8 @@ impl WastInterpreter {
                 let dep_inst = self.store.instances.resolve(*dep_inst_id);
                 let externval = dep_inst
                     .resolve_export_by_name(import.item_name.0.as_ref())
-                    .expect("unknown item in module");
+                    // TODO: make this error better, should be a link error
+                    .ok_or(WasmInstantiationError::InvalidExternval)?;
                 externvals.push(externval);
             }
         }

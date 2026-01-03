@@ -328,6 +328,35 @@ impl WasmStore {
             impl_: WasmFuncImpl::Host { hostfunc },
         })
     }
+
+    pub fn alloc_host_global(
+        &mut self,
+        ty: &'static WasmGlobalType,
+        wval: WasmValue,
+    ) -> WasmGlobalAddr {
+        self.globals.add(WasmGlobalInst {
+            type_: ModuleRef(ty),
+            val: wval,
+        })
+    }
+
+    pub fn alloc_host_table(
+        &mut self,
+        ty: &'static WasmTableType,
+        elems: Vec<WasmRefValue>,
+    ) -> WasmTableAddr {
+        self.tables.add(WasmTableInst {
+            type_: ModuleRef(ty),
+            elems,
+        })
+    }
+
+    pub fn alloc_host_mem(&mut self, ty: &'static WasmMemType, bytes: Vec<u8>) -> WasmMemAddr {
+        self.mems.add(WasmMemInst {
+            type_: ModuleRef(ty),
+            data: bytes,
+        })
+    }
 }
 
 pub struct WasmDataInst {
