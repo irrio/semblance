@@ -109,11 +109,13 @@ pub fn validate(wmod: WasmModuleRaw) -> WasmValidationResult<WasmModule> {
 
 type ControlFlowMap = HashMap<WasmInstructionIdx, WasmInstructionIdx>;
 type BreakImmediatesMap = HashMap<WasmInstructionIdx, VerifiedBreakImmediates>;
+type BreakTableImmediatesMap = HashMap<WasmInstructionIdx, VerifiedBreakTableImmediates>;
 
 pub struct ValidationSideTables {
     pub end_control_flow: ControlFlowMap,
     pub else_control_flow: ControlFlowMap,
     pub break_immediates: BreakImmediatesMap,
+    pub break_table_immediates: BreakTableImmediatesMap,
 }
 
 impl ValidationSideTables {
@@ -122,6 +124,7 @@ impl ValidationSideTables {
             end_control_flow: HashMap::new(),
             else_control_flow: HashMap::new(),
             break_immediates: HashMap::new(),
+            break_table_immediates: HashMap::new(),
         }
     }
 }
@@ -150,7 +153,7 @@ fn reencode_module_with_side_tables(
             .map(|elem| WasmElem {
                 ref_type: elem.ref_type,
                 init: elem.init.into_iter().map(reencode_const_expr).collect(),
-                elem_mode: unsafe { std::mem::transmute(elem.elem_mode) },
+                elem_mode: reencode_elem_mode(elem.elem_mode),
             })
             .collect(),
         datas: wmod
@@ -158,7 +161,7 @@ fn reencode_module_with_side_tables(
             .into_iter()
             .map(|data| WasmData {
                 bytes: data.bytes,
-                mode: unsafe { std::mem::transmute(data.mode) },
+                mode: reencode_data_mode(data.mode),
             })
             .collect(),
         start: wmod.start,
@@ -168,10 +171,56 @@ fn reencode_module_with_side_tables(
     }
 }
 
+fn reencode_elem_mode(
+    elem_mode: WasmElemMode<WasmInstructionRaw>,
+) -> WasmElemMode<WasmInstruction> {
+    use WasmElemMode::*;
+    match elem_mode {
+        Passive => Passive,
+        Active {
+            table_idx,
+            offset_expr,
+        } => Active {
+            table_idx,
+            offset_expr: reencode_const_expr(offset_expr),
+        },
+        Declarative => Declarative,
+    }
+}
+
+fn reencode_data_mode(
+    data_mode: WasmDataMode<WasmInstructionRaw>,
+) -> WasmDataMode<WasmInstruction> {
+    use WasmDataMode::*;
+    match data_mode {
+        Passive => Passive,
+        Active {
+            mem_idx,
+            offset_expr,
+        } => Active {
+            mem_idx,
+            offset_expr: reencode_const_expr(offset_expr),
+        },
+    }
+}
+
 fn reencode_const_expr(expr: Box<WasmExprRaw>) -> Box<WasmExpr> {
-    expr.into_iter()
-        .map(|instr| unsafe { std::mem::transmute(instr) })
-        .collect()
+    expr.into_iter().map(reencode_const_instr).collect()
+}
+
+fn reencode_const_instr(instr: WasmInstructionRaw) -> WasmInstruction {
+    use WasmInstructionRepr::*;
+    match instr {
+        I32Const { val } => I32Const { val },
+        I64Const { val } => I64Const { val },
+        F32Const { val } => F32Const { val },
+        F64Const { val } => F64Const { val },
+        RefNull { ref_type } => RefNull { ref_type },
+        RefFunc { func_idx } => RefFunc { func_idx },
+        GlobalGet { global_idx } => GlobalGet { global_idx },
+        ExprEnd => ExprEnd,
+        _ => panic!("expr not const!"),
+    }
 }
 
 fn reencode_funcs_with_side_tables(
@@ -204,13 +253,7 @@ fn reencode_expr_with_side_tables(
         .enumerate()
         .map(|(i, instr)| {
             let idx = WasmInstructionIdx(i as u32);
-            reencode_instr_with_side_tables(
-                instr,
-                idx,
-                side_tables.end_control_flow.remove(&idx),
-                side_tables.else_control_flow.remove(&idx),
-                side_tables.break_immediates.remove(&idx),
-            )
+            reencode_instr_with_side_tables(instr, idx, &mut side_tables)
         })
         .collect()
 }
@@ -218,9 +261,7 @@ fn reencode_expr_with_side_tables(
 fn reencode_instr_with_side_tables(
     instr: WasmInstructionRaw,
     ic: WasmInstructionIdx,
-    end_ic: Option<WasmInstructionIdx>,
-    else_ic: Option<WasmInstructionIdx>,
-    break_immediates: Option<VerifiedBreakImmediates>,
+    side_tables: &mut ValidationSideTables,
 ) -> WasmInstruction {
     use WasmInstructionRepr::*;
     match instr {
@@ -229,35 +270,268 @@ fn reencode_instr_with_side_tables(
             imm: VerifiedIfImmediates {
                 end_off: calculate_relative_jump_offset(
                     ic,
-                    end_ic.expect("missing control flow mapping"),
+                    side_tables
+                        .end_control_flow
+                        .remove(&ic)
+                        .expect("missing control flow mapping"),
                 ),
-                else_off: else_ic.map(|else_ic| calculate_relative_jump_offset(ic, else_ic)),
+                else_off: side_tables
+                    .else_control_flow
+                    .remove(&ic)
+                    .map(|else_ic| calculate_relative_jump_offset(ic, else_ic)),
             },
         },
         Block { block_type, imm: _ } => Block {
             block_type,
-            imm: calculate_relative_jump_offset(ic, end_ic.expect("missing control flow mapping")),
+            imm: calculate_relative_jump_offset(
+                ic,
+                side_tables
+                    .end_control_flow
+                    .remove(&ic)
+                    .expect("missing control flow mapping"),
+            ),
         },
         Loop { block_type, imm: _ } => Loop {
             block_type,
-            imm: calculate_relative_jump_offset(ic, end_ic.expect("missing control flow mapping")),
+            imm: calculate_relative_jump_offset(
+                ic,
+                side_tables
+                    .end_control_flow
+                    .remove(&ic)
+                    .expect("missing control flow mapping"),
+            ),
         },
         Break { label_idx, imm: _ } => Break {
             label_idx,
-            imm: break_immediates.expect("missing break immediates"),
+            imm: side_tables
+                .break_immediates
+                .remove(&ic)
+                .expect("missing break immediates"),
         },
         BreakIf { label_idx, imm: _ } => BreakIf {
             label_idx,
-            imm: break_immediates.expect("missing break immediates"),
+            imm: side_tables
+                .break_immediates
+                .remove(&ic)
+                .expect("missing break immediates"),
         },
-        BreakTable { labels, imm: _ } => BreakTable {
-            labels,
-            imm: break_immediates.expect("missing break immediates"),
+        BreakTable { imm: _ } => BreakTable {
+            imm: side_tables
+                .break_table_immediates
+                .remove(&ic)
+                .expect("missing break table immediates"),
         },
         Return { imm: _ } => Return {
-            imm: break_immediates.expect("missing break immediates"),
+            imm: side_tables
+                .break_immediates
+                .remove(&ic)
+                .expect("missing break immediates"),
         },
-        i @ _ => unsafe { std::mem::transmute(i) },
+        Unreachable => Unreachable,
+        Nop => Nop,
+        Else => Else,
+        Call { func_idx } => Call { func_idx },
+        CallIndirect {
+            table_idx,
+            type_idx,
+        } => CallIndirect {
+            table_idx,
+            type_idx,
+        },
+        ExprEnd => ExprEnd,
+        RefNull { ref_type } => RefNull { ref_type },
+        RefIsNull => RefIsNull,
+        RefFunc { func_idx } => RefFunc { func_idx },
+        Drop => Drop,
+        Select { value_types } => Select { value_types },
+        LocalGet { local_idx } => LocalGet { local_idx },
+        LocalSet { local_idx } => LocalSet { local_idx },
+        LocalTee { local_idx } => LocalTee { local_idx },
+        GlobalGet { global_idx } => GlobalGet { global_idx },
+        GlobalSet { global_idx } => GlobalSet { global_idx },
+        TableGet { table_idx } => TableGet { table_idx },
+        TableSet { table_idx } => TableSet { table_idx },
+        TableSize { table_idx } => TableSize { table_idx },
+        TableGrow { table_idx } => TableGrow { table_idx },
+        TableFill { table_idx } => TableFill { table_idx },
+        TableCopy { dst, src } => TableCopy { dst, src },
+        TableInit {
+            table_idx,
+            elem_idx,
+        } => TableInit {
+            table_idx,
+            elem_idx,
+        },
+        ElemDrop { elem_idx } => ElemDrop { elem_idx },
+        I32Load { memarg } => I32Load { memarg },
+        I64Load { memarg } => I64Load { memarg },
+        F32Load { memarg } => F32Load { memarg },
+        F64Load { memarg } => F64Load { memarg },
+        I32Load8S { memarg } => I32Load8S { memarg },
+        I32Load8U { memarg } => I32Load8U { memarg },
+        I32Load16S { memarg } => I32Load16S { memarg },
+        I32Load16U { memarg } => I32Load16U { memarg },
+        I64Load8S { memarg } => I64Load8S { memarg },
+        I64Load8U { memarg } => I64Load8U { memarg },
+        I64Load16S { memarg } => I64Load16S { memarg },
+        I64Load16U { memarg } => I64Load16U { memarg },
+        I64Load32S { memarg } => I64Load32S { memarg },
+        I64Load32U { memarg } => I64Load32U { memarg },
+        I32Store { memarg } => I32Store { memarg },
+        I64Store { memarg } => I64Store { memarg },
+        F32Store { memarg } => F32Store { memarg },
+        F64Store { memarg } => F64Store { memarg },
+        I32Store8 { memarg } => I32Store8 { memarg },
+        I32Store16 { memarg } => I32Store16 { memarg },
+        I64Store8 { memarg } => I64Store8 { memarg },
+        I64Store16 { memarg } => I64Store16 { memarg },
+        I64Store32 { memarg } => I64Store32 { memarg },
+        MemorySize => MemorySize,
+        MemoryGrow => MemoryGrow,
+        MemoryInit { data_idx } => MemoryInit { data_idx },
+        DataDrop { data_idx } => DataDrop { data_idx },
+        MemoryCopy => MemoryCopy,
+        MemoryFill => MemoryFill,
+        I32Const { val } => I32Const { val },
+        I64Const { val } => I64Const { val },
+        F32Const { val } => F32Const { val },
+        F64Const { val } => F64Const { val },
+        I32EqZ => I32EqZ,
+        I32Eq => I32Eq,
+        I32Neq => I32Neq,
+        I32LtS => I32LtS,
+        I32LtU => I32LtU,
+        I32GtS => I32GtS,
+        I32GtU => I32GtU,
+        I32LeS => I32LeS,
+        I32LeU => I32LeU,
+        I32GeS => I32GeS,
+        I32GeU => I32GeU,
+        I64EqZ => I64EqZ,
+        I64Eq => I64Eq,
+        I64Neq => I64Neq,
+        I64LtS => I64LtS,
+        I64LtU => I64LtU,
+        I64GtS => I64GtS,
+        I64GtU => I64GtU,
+        I64LeS => I64LeS,
+        I64LeU => I64LeU,
+        I64GeS => I64GeS,
+        I64GeU => I64GeU,
+        F32Eq => F32Eq,
+        F32Neq => F32Neq,
+        F32Lt => F32Lt,
+        F32Gt => F32Gt,
+        F32Le => F32Le,
+        F32Ge => F32Ge,
+        F64Eq => F64Eq,
+        F64Neq => F64Neq,
+        F64Lt => F64Lt,
+        F64Gt => F64Gt,
+        F64Le => F64Le,
+        F64Ge => F64Ge,
+        I32Clz => I32Clz,
+        I32Ctz => I32Ctz,
+        I32Popcnt => I32Popcnt,
+        I32Add => I32Add,
+        I32Sub => I32Sub,
+        I32Mul => I32Mul,
+        I32DivS => I32DivS,
+        I32DivU => I32DivU,
+        I32RemS => I32RemS,
+        I32RemU => I32RemU,
+        I32And => I32And,
+        I32Or => I32Or,
+        I32Xor => I32Xor,
+        I32Shl => I32Shl,
+        I32ShrS => I32ShrS,
+        I32ShrU => I32ShrU,
+        I32Rotl => I32Rotl,
+        I32Rotr => I32Rotr,
+        I64Clz => I64Clz,
+        I64Ctz => I64Ctz,
+        I64Popcnt => I64Popcnt,
+        I64Add => I64Add,
+        I64Sub => I64Sub,
+        I64Mul => I64Mul,
+        I64DivS => I64DivS,
+        I64DivU => I64DivU,
+        I64RemS => I64RemS,
+        I64RemU => I64RemU,
+        I64And => I64And,
+        I64Or => I64Or,
+        I64Xor => I64Xor,
+        I64Shl => I64Shl,
+        I64ShrS => I64ShrS,
+        I64ShrU => I64ShrU,
+        I64Rotl => I64Rotl,
+        I64Rotr => I64Rotr,
+        F32Abs => F32Abs,
+        F32Neg => F32Neg,
+        F32Ceil => F32Ceil,
+        F32Floor => F32Floor,
+        F32Trunc => F32Trunc,
+        F32Nearest => F32Nearest,
+        F32Sqrt => F32Sqrt,
+        F32Add => F32Add,
+        F32Sub => F32Sub,
+        F32Mul => F32Mul,
+        F32Div => F32Div,
+        F32Min => F32Min,
+        F32Max => F32Max,
+        F32CopySign => F32CopySign,
+        F64Abs => F64Abs,
+        F64Neg => F64Neg,
+        F64Ceil => F64Ceil,
+        F64Floor => F64Floor,
+        F64Trunc => F64Trunc,
+        F64Nearest => F64Nearest,
+        F64Sqrt => F64Sqrt,
+        F64Add => F64Add,
+        F64Sub => F64Sub,
+        F64Mul => F64Mul,
+        F64Div => F64Div,
+        F64Min => F64Min,
+        F64Max => F64Max,
+        F64CopySign => F64CopySign,
+        I32WrapI64 => I32WrapI64,
+        I32TruncF32S => I32TruncF32S,
+        I32TruncF32U => I32TruncF32U,
+        I32TruncF64S => I32TruncF64S,
+        I32TruncF64U => I32TruncF64U,
+        I64ExtendI32S => I64ExtendI32S,
+        I64ExtendI32U => I64ExtendI32U,
+        I64TruncF32S => I64TruncF32S,
+        I64TruncF32U => I64TruncF32U,
+        I64TruncF64S => I64TruncF64S,
+        I64TruncF64U => I64TruncF64U,
+        F32ConvertI32S => F32ConvertI32S,
+        F32ConvertI32U => F32ConvertI32U,
+        F32ConvertI64S => F32ConvertI64S,
+        F32ConvertI64U => F32ConvertI64U,
+        F32DemoteF64 => F32DemoteF64,
+        F64ConvertI32S => F64ConvertI32S,
+        F64ConvertI32U => F64ConvertI32U,
+        F64ConvertI64S => F64ConvertI64S,
+        F64ConvertI64U => F64ConvertI64U,
+        F64PromoteF32 => F64PromoteF32,
+        I32ReinterpretF32 => I32ReinterpretF32,
+        I64ReinterpretF64 => I64ReinterpretF64,
+        F32ReinterpretI32 => F32ReinterpretI32,
+        F64ReinterpretI64 => F64ReinterpretI64,
+        I32Extend8S => I32Extend8S,
+        I32Extend16S => I32Extend16S,
+        I64Extend8S => I64Extend8S,
+        I64Extend16S => I64Extend16S,
+        I64Extend32S => I64Extend32S,
+        I32TruncSatF32S => I32TruncSatF32S,
+        I32TruncSatF32U => I32TruncSatF32U,
+        I32TruncSatF64S => I32TruncSatF64S,
+        I32TruncSatF64U => I32TruncSatF64U,
+        I64TruncSatF32S => I64TruncSatF32S,
+        I64TruncSatF32U => I64TruncSatF32U,
+        I64TruncSatF64S => I64TruncSatF64S,
+        I64TruncSatF64U => I64TruncSatF64U,
     }
 }
 
@@ -1105,10 +1379,8 @@ fn validate_instr(
                 .break_immediates
                 .insert(idx, VerifiedBreakImmediates { arity, drop });
         }
-        BreakTable {
-            labels: all_labels,
-            imm: _,
-        } => {
+        BreakTable { imm } => {
+            let all_labels = &imm.labels;
             let default_label = all_labels.last().unwrap();
             let labels = &all_labels[0..all_labels.len() - 1];
             let default_label_entry = expr_ctx
@@ -1117,6 +1389,7 @@ fn validate_instr(
                 .ok_or(WasmValidationError::InvalidLabelIdx(default_label.0))?;
             let ty = default_label_entry.label_types();
             let arity = ty.len();
+            let mut verified_labels = Vec::with_capacity(all_labels.len());
             {
                 let stack = expr_ctx.stack();
                 stack.pop(t!(i32))?;
@@ -1133,16 +1406,27 @@ fn validate_instr(
                         });
                     }
                     stack.pop_result_type(types)?;
+                    let drop = stack.depth() - label_entry.min_stack_depth;
+                    verified_labels.push(BreakTableEntry {
+                        labelidx: *label_idx,
+                        drop,
+                    });
                     stack.push_result_type(types);
                 }
                 stack.pop_result_type(ty)?;
             }
             let drop = expr_ctx.unreachable();
-            expr_ctx.side_tables.break_immediates.insert(
+            verified_labels.push(BreakTableEntry {
+                labelidx: *default_label,
+                drop,
+            });
+            expr_ctx.side_tables.break_table_immediates.insert(
                 idx,
-                VerifiedBreakImmediates {
-                    arity: arity.try_into().expect("arity immediate too large"),
-                    drop: drop.try_into().expect("drop immediate too large"),
+                VerifiedBreakTableImmediates {
+                    heap_args: Box::new(VerifiedBreakTableHeapArgs {
+                        arity,
+                        labels: verified_labels.into_boxed_slice(),
+                    }),
                 },
             );
         }

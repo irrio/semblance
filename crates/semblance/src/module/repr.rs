@@ -1,3 +1,5 @@
+use std::mem;
+
 pub type WasmModule = WasmModuleRepr<WasmInstruction>;
 pub type WasmModuleRaw = WasmModuleRepr<WasmInstructionRaw>;
 
@@ -170,16 +172,23 @@ pub trait Immediates: std::fmt::Debug {
     type LoopImmediates: std::fmt::Debug;
     type IfImmediates: std::fmt::Debug;
     type BreakImmediates: std::fmt::Debug;
+    type BreakTableImmediates: std::fmt::Debug;
 }
 
 #[derive(Debug)]
-pub struct NoImmediates;
+pub struct UnverifiedBreakTableImmediates {
+    pub labels: Box<[WasmLabelIdx]>,
+}
 
-impl Immediates for NoImmediates {
+#[derive(Debug)]
+pub struct UnverifiedImmediates;
+
+impl Immediates for UnverifiedImmediates {
     type BlockImmediates = ();
     type LoopImmediates = ();
     type IfImmediates = ();
     type BreakImmediates = ();
+    type BreakTableImmediates = UnverifiedBreakTableImmediates;
 }
 
 #[derive(Debug)]
@@ -193,8 +202,25 @@ pub struct VerifiedIfImmediates {
 
 #[derive(Debug)]
 pub struct VerifiedBreakImmediates {
-    pub arity: u16,
-    pub drop: u16,
+    pub arity: u32,
+    pub drop: u32,
+}
+
+#[derive(Debug)]
+pub struct BreakTableEntry {
+    pub labelidx: WasmLabelIdx,
+    pub drop: usize,
+}
+
+#[derive(Debug)]
+pub struct VerifiedBreakTableHeapArgs {
+    pub arity: usize,
+    pub labels: Box<[BreakTableEntry]>,
+}
+
+#[derive(Debug)]
+pub struct VerifiedBreakTableImmediates {
+    pub heap_args: Box<VerifiedBreakTableHeapArgs>,
 }
 
 impl Immediates for VerifiedImmediates {
@@ -202,12 +228,18 @@ impl Immediates for VerifiedImmediates {
     type LoopImmediates = WasmRelativeJumpOffset;
     type IfImmediates = VerifiedIfImmediates;
     type BreakImmediates = VerifiedBreakImmediates;
+    type BreakTableImmediates = VerifiedBreakTableImmediates;
 }
 
 pub type WasmInstruction = WasmInstructionRepr<VerifiedImmediates>;
-pub type WasmInstructionRaw = WasmInstructionRepr<NoImmediates>;
+pub type WasmInstructionRaw = WasmInstructionRepr<UnverifiedImmediates>;
 pub type WasmExpr = [WasmInstruction];
 pub type WasmExprRaw = [WasmInstructionRaw];
+
+const __WASM_INSTR_SIZE_GUARD: () = assert!(
+    mem::size_of::<WasmInstruction>() == mem::size_of::<WasmInstructionRaw>(),
+    "WasmInstruction and WasmInstructionRaw must be the same size"
+);
 
 #[derive(Debug)]
 pub enum WasmInstructionRepr<I: Immediates> {
@@ -235,8 +267,7 @@ pub enum WasmInstructionRepr<I: Immediates> {
         imm: I::BreakImmediates,
     },
     BreakTable {
-        labels: Box<[WasmLabelIdx]>,
-        imm: I::BreakImmediates,
+        imm: I::BreakTableImmediates,
     },
     Return {
         imm: I::BreakImmediates,

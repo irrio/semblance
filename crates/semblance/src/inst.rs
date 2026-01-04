@@ -71,18 +71,12 @@ impl WasmStack {
         out
     }
 
-    pub fn truncate_values_within(
-        &mut self,
-        br: &VerifiedBreakImmediates,
-        labelidx: Option<WasmLabelIdx>,
-    ) {
-        let mut popped = Vec::with_capacity(br.arity as usize);
-        for _ in 0..br.arity {
+    pub fn truncate_values_within(&mut self, arity: usize, drop: usize) {
+        let mut popped = Vec::with_capacity(arity);
+        for _ in 0..arity {
             popped.push(self.value_stack.0.pop().expect("value stack underflow"));
         }
-        let num_labels = labelidx.map(|l| l.0 + 1).unwrap_or(1);
-        let num_to_drop = br.drop as u32 * num_labels;
-        for _ in 0..num_to_drop {
+        for _ in 0..drop {
             self.value_stack.0.pop();
         }
         for v in popped.into_iter().rev() {

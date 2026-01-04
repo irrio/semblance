@@ -997,27 +997,28 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             },
             Break { label_idx, imm } => {
                 let label = stack.pop_label(*label_idx);
-                stack.truncate_values_within(imm, None);
+                stack.truncate_values_within(imm.arity as usize, imm.drop as usize);
                 goto!(ip, label.instr);
             }
             BreakIf { label_idx, imm } => {
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
                     let label = stack.pop_label(*label_idx);
-                    stack.truncate_values_within(imm, None);
+                    stack.truncate_values_within(imm.arity as usize, imm.drop as usize);
                     goto!(ip, label.instr);
                 }
             }
-            BreakTable { labels, imm } => {
+            BreakTable { imm } => {
+                let labels = &imm.heap_args.labels;
                 let i = unsafe { stack.pop_value().num.i32 } as u32 as usize;
-                let label_idx = labels[i.min(labels.len() - 1)];
-                let label = stack.pop_label(label_idx);
-                stack.truncate_values_within(imm, Some(label_idx));
+                let entry = &labels[i.min(labels.len() - 1)];
+                let label = stack.pop_label(entry.labelidx);
+                stack.truncate_values_within(imm.heap_args.arity, entry.drop);
                 goto!(ip, label.instr);
             }
             Return { imm } => {
                 stack.pop_frame();
-                stack.truncate_values_within(imm, None);
+                stack.truncate_values_within(imm.arity as usize, imm.drop as usize);
                 if let Some(ControlStackEntry::Label(label)) = stack.pop_control() {
                     goto!(ip, label.instr);
                 } else {

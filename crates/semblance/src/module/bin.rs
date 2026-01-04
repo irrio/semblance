@@ -594,8 +594,9 @@ fn decode_instr(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmInstructionRaw
             all_labels.push(default_label);
             Ok((
                 BreakTable {
-                    labels: all_labels.into_boxed_slice(),
-                    imm: (),
+                    imm: UnverifiedBreakTableImmediates {
+                        labels: all_labels.into_boxed_slice(),
+                    },
                 },
                 bytes,
             ))
