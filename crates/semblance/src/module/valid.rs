@@ -1990,6 +1990,7 @@ impl TypeStack {
         for t in result_type.0.iter().rev() {
             popped.push(self.pop(*t)?);
         }
+        popped.reverse();
         Ok(popped.into_boxed_slice())
     }
 
