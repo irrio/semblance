@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use crate::{
     exec::exec,
-    inst::{WasmRefValue, WasmStack},
+    inst::{WasmRefValue, WasmStack, WasmTrap},
     module::{
         WasmData, WasmDataIdx, WasmDataMode, WasmElemIdx, WasmElemMode, WasmExportDesc, WasmExpr,
         WasmFunc, WasmFuncType, WasmGlobalType, WasmImportDesc, WasmInstructionRepr, WasmLimits,
@@ -31,6 +31,8 @@ pub enum WasmInstantiationError {
     InvalidExternMem,
     InvalidExternTable,
     InvalidExternval,
+    ConstExprTrapped(WasmTrap),
+    StartFunctionTrapped(WasmTrap),
 }
 
 pub type WasmInstantiationResult<T = ()> = Result<T, WasmInstantiationError>;
@@ -65,12 +67,12 @@ fn exec_with_auxiliary_frame(
     stack: &mut WasmStack,
     store: &mut WasmStore,
     expr: &WasmExpr,
-) {
+) -> Result<(), WasmTrap> {
     stack.push_frame(WasmFrame {
         locals: Box::new([]),
         winst_id,
-    });
-    exec(stack, store, expr).expect("constexpr trapped")
+    })?;
+    exec(stack, store, expr)
 }
 
 impl WasmStore {
@@ -109,7 +111,7 @@ impl WasmStore {
         self.alloc_module(
             &wmod, winst_id, externvals, globalinit, refinit, funcaddrs, &counts,
         );
-        let mut stack = WasmStack::new();
+        let mut stack = WasmStack::new(1024);
 
         for (i, elem) in wmod.elems.iter().enumerate() {
             match &elem.elem_mode {
@@ -131,8 +133,10 @@ impl WasmStore {
                         },
                         ExprEnd,
                     ];
-                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &offset_expr);
-                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &offset_expr)
+                        .map_err(WasmInstantiationError::ConstExprTrapped)?;
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr)
+                        .map_err(WasmInstantiationError::ConstExprTrapped)?;
                 }
                 WasmElemMode::Declarative => {
                     use WasmInstructionRepr::*;
@@ -142,7 +146,8 @@ impl WasmStore {
                         },
                         ExprEnd,
                     ];
-                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr)
+                        .map_err(WasmInstantiationError::ConstExprTrapped)?;
                 }
                 _ => continue,
             }
@@ -167,8 +172,10 @@ impl WasmStore {
                         },
                         ExprEnd,
                     ];
-                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &offset_expr);
-                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &offset_expr)
+                        .map_err(WasmInstantiationError::ConstExprTrapped)?;
+                    exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr)
+                        .map_err(WasmInstantiationError::ConstExprTrapped)?;
                 }
                 _ => continue,
             }
@@ -177,7 +184,8 @@ impl WasmStore {
         if let Some(func_idx) = wmod.start {
             use WasmInstructionRepr::*;
             let expr = [Call { func_idx }, ExprEnd];
-            exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr);
+            exec_with_auxiliary_frame(winst_id, &mut stack, self, &expr)
+                .map_err(WasmInstantiationError::StartFunctionTrapped)?;
         }
 
         Ok(winst_id)

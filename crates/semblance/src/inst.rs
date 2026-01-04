@@ -42,13 +42,15 @@ pub enum ControlStackEntry {
 pub struct WasmStack {
     value_stack: WasmValueStack,
     control_stack: Vec<ControlStackEntry>,
+    max_control_stack_depth: usize,
 }
 
 impl WasmStack {
-    pub fn new() -> Self {
+    pub fn new(max_control_stack_depth: usize) -> Self {
         WasmStack {
             value_stack: WasmValueStack::new(),
             control_stack: Vec::new(),
+            max_control_stack_depth,
         }
     }
 
@@ -88,12 +90,20 @@ impl WasmStack {
         }
     }
 
-    pub fn push_label(&mut self, label: WasmLabel) {
+    pub fn push_label(&mut self, label: WasmLabel) -> Result<(), WasmTrap> {
+        if self.control_stack.len() >= self.max_control_stack_depth {
+            return Err(WasmTrap {});
+        }
         self.control_stack.push(ControlStackEntry::Label(label));
+        Ok(())
     }
 
-    pub fn push_frame(&mut self, frame: WasmFrame) {
+    pub fn push_frame(&mut self, frame: WasmFrame) -> Result<(), WasmTrap> {
+        if self.control_stack.len() >= self.max_control_stack_depth {
+            return Err(WasmTrap {});
+        }
         self.control_stack.push(ControlStackEntry::Frame(frame));
+        Ok(())
     }
 
     pub fn pop_control(&mut self) -> Option<ControlStackEntry> {
@@ -298,6 +308,19 @@ pub struct WasmStore {
     pub datas: StoreTable<WasmDataInst>,
 }
 
+#[derive(Debug)]
+pub struct WasmInvokeOptions {
+    max_control_stack_depth: usize,
+}
+
+impl Default for WasmInvokeOptions {
+    fn default() -> Self {
+        Self {
+            max_control_stack_depth: 1024,
+        }
+    }
+}
+
 impl WasmStore {
     pub fn new() -> Self {
         WasmStore {
@@ -315,12 +338,13 @@ impl WasmStore {
         &mut self,
         funcaddr: WasmFuncAddr,
         args: Box<[WasmValue]>,
+        opts: WasmInvokeOptions,
     ) -> Result<DynamicWasmResult, WasmTrap> {
         let func = self.funcs.resolve(funcaddr);
         let ty = func.type_;
         match func.impl_ {
             WasmFuncImpl::Wasm { winst_id, func } => {
-                let mut stack = WasmStack::new();
+                let mut stack = WasmStack::new(opts.max_control_stack_depth);
                 let mut locals = args.into_vec();
                 // todo: typecheck args
                 for local_type in &func.locals {
@@ -329,10 +353,10 @@ impl WasmStore {
                 stack.push_frame(WasmFrame {
                     locals: locals.into_boxed_slice(),
                     winst_id,
-                });
+                })?;
                 stack.push_label(WasmLabel {
                     instr: func.body.last().expect("func body has no end instr"),
-                });
+                })?;
                 exec(&mut stack, self, &func.body)?;
                 let mut out = Vec::with_capacity(ty.output_type.0.len());
                 for _ in 0..ty.output_type.0.len() {

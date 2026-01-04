@@ -61,14 +61,14 @@ macro_rules! invoke {
                 }
                 $stack.push_label(WasmLabel {
                     instr: unsafe { $ip.add(1) },
-                });
+                })?;
                 $stack.push_frame(WasmFrame {
                     locals: locals.into_boxed_slice(),
                     winst_id,
-                });
+                })?;
                 $stack.push_label(WasmLabel {
                     instr: funcimpl.body.last().unwrap(),
-                });
+                })?;
                 goto!($ip, &funcimpl.body[0]);
             }
         }
@@ -941,25 +941,25 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             Block { block_type: _, imm } => {
                 stack.push_label(WasmLabel {
                     instr: unsafe { ip.add(imm.0 as usize + 1) },
-                });
+                })?;
             }
             Loop {
                 block_type: _,
                 imm: _,
             } => {
-                stack.push_label(WasmLabel { instr: ip });
+                stack.push_label(WasmLabel { instr: ip })?;
             }
             If { block_type: _, imm } => {
                 let val = stack.pop_value();
                 if (unsafe { val.num.i32 } != 0) {
                     stack.push_label(WasmLabel {
                         instr: unsafe { ip.add(imm.end_off.0 as usize + 1) },
-                    });
+                    })?;
                 } else {
                     if let Some(else_off) = imm.else_off {
                         stack.push_label(WasmLabel {
                             instr: unsafe { ip.add(imm.end_off.0 as usize + 1) },
-                        });
+                        })?;
                         goto!(ip, unsafe { ip.add(else_off.0 as usize + 1) });
                     } else {
                         goto!(ip, unsafe { ip.add(imm.end_off.0 as usize + 1) });

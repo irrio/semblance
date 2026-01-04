@@ -9,8 +9,8 @@ use std::{
 
 use semblance::{
     inst::{
-        DynamicWasmResult, WasmNumValue, WasmResult, WasmStore, WasmTrap, WasmValue,
-        instantiate::WasmInstantiationError, table::WasmInstanceAddr,
+        DynamicWasmResult, WasmInvokeOptions, WasmNumValue, WasmResult, WasmStore, WasmTrap,
+        WasmValue, instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
     link::{WasmLinkError, WasmLinker, infer_module_name_from_path},
     module::{
@@ -378,7 +378,7 @@ fn run(args: &CliArgs) -> SemblanceResult {
         let invoke_args = parse_args_for_value_type(ty, &argv)
             .map_err(|e| SemblanceError::Args(ArgumentError::InvalidInput(e)))?;
         let wres = store
-            .invoke(funcaddr, invoke_args)
+            .invoke(funcaddr, invoke_args, WasmInvokeOptions::default())
             .map_err(SemblanceError::Trap)?;
         return Ok(wres);
     }

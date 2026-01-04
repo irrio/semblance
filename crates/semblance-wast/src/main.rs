@@ -1,8 +1,8 @@
 use semblance::inst::instantiate::{WasmInstantiationError, WasmInstantiationResult};
 use semblance::inst::table::WasmInstanceAddr;
 use semblance::inst::{
-    DynamicWasmResult, WasmExternAddr, WasmExternVal, WasmMemInst, WasmNumValue, WasmRefValue,
-    WasmResult, WasmStore, WasmTrap, WasmValue,
+    DynamicWasmResult, WasmExternAddr, WasmExternVal, WasmInvokeOptions, WasmMemInst, WasmNumValue,
+    WasmRefValue, WasmResult, WasmStore, WasmTrap, WasmValue,
 };
 use semblance::module::{
     WasmFromBytesError, WasmFuncType, WasmGlobalMutability, WasmGlobalType, WasmLimits,
@@ -362,10 +362,10 @@ impl WastInterpreter {
             }
             AssertExhaustion {
                 span: _,
-                call: _,
-                message: _,
+                call,
+                message,
             } => {
-                todo!("assert exhaustion")
+                self.eval_assert_exhaustion(call, message);
             }
             AssertUnlinkable {
                 span: _,
@@ -437,6 +437,15 @@ impl WastInterpreter {
             // ok
         } else {
             panic!("expected invalid module, got: {:?}", res);
+        }
+    }
+
+    fn eval_assert_exhaustion(&mut self, invoke: &mut WastInvoke, _message: &str) {
+        let res = self.eval_invoke(invoke);
+        if let Err(_trap) = res {
+            // ok
+        } else {
+            panic!("expected exhuastion, got {:?}", res);
         }
     }
 
@@ -558,7 +567,8 @@ impl WastInterpreter {
         let funcaddr = winst
             .resolve_export_fn_by_name(wast_invoke.name)
             .expect("fn not found");
-        self.store.invoke(funcaddr, args)
+        self.store
+            .invoke(funcaddr, args, WasmInvokeOptions::default())
     }
 
     fn eval_args(&self, args: &[WastArg]) -> Box<[WasmValue]> {
