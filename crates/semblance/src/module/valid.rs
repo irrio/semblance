@@ -35,6 +35,7 @@ pub enum WasmValidationError {
         table: WasmRefType,
         elem: WasmRefType,
     },
+    MutationOfImmutableGlobal,
     TooManySelectTypes,
     InvalidReturn,
     InvalidCallIndirect,
@@ -800,6 +801,9 @@ fn validate_instr(
                 .globals
                 .get(global_idx.0 as usize)
                 .ok_or(WasmValidationError::InvalidGlobalIdx(global_idx.0))?;
+            if global_type.mutability == WasmGlobalMutability::Immutable {
+                return Err(WasmValidationError::MutationOfImmutableGlobal);
+            }
             expr_ctx.stack().pop(global_type.val_type)?;
         }
         // -- table instruction -- //
