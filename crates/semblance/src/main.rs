@@ -244,6 +244,7 @@ impl CliArgs {
 #[derive(Debug)]
 #[allow(dead_code)]
 enum ParseArgError {
+    Arity { expected: usize, actual: usize },
     Int(ParseIntError),
     Float(ParseFloatError),
 }
@@ -290,7 +291,12 @@ fn parse_args_for_value_type(
     ty: &[WasmValueType],
     argv: &[String],
 ) -> Result<Box<[WasmValue]>, ParseArgError> {
-    assert_eq!(ty.len(), argv.len());
+    if ty.len() != argv.len() {
+        return Err(ParseArgError::Arity {
+            expected: ty.len(),
+            actual: argv.len(),
+        });
+    }
     let mut parsed = Vec::with_capacity(ty.len());
     for (ty, argv) in ty.iter().zip(argv) {
         parsed.push(parse_arg_with_type(ty, argv)?);
