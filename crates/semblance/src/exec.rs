@@ -794,19 +794,21 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(a as u64 as i64);
             }
             TableGet { table_idx } => {
-                let i = stack.pop_value();
+                let i = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let frame = stack.current_frame();
                 let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve(tableaddr);
-                stack.push_value(table.elems[unsafe { i.num.i32 } as usize]);
+                let item = table.elems.get(i).ok_or(WasmTrap {})?;
+                stack.push_value(*item);
             }
             TableSet { table_idx } => {
                 let val = stack.pop_value();
-                let i = stack.pop_value();
+                let i = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let frame = stack.current_frame();
                 let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve_mut(tableaddr);
-                table.elems[unsafe { i.num.i32 } as usize] = unsafe { val.ref_ };
+                let item = table.elems.get_mut(i).ok_or(WasmTrap {})?;
+                *item = unsafe { val.ref_ };
             }
             TableSize { table_idx } => {
                 let frame = stack.current_frame();
@@ -815,19 +817,18 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 stack.push_value(table.elems.len() as i32);
             }
             TableGrow { table_idx } => {
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let val = unsafe { stack.pop_value().ref_ };
                 let frame = stack.current_frame();
                 let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve_mut(tableaddr);
                 let sz = table.elems.len();
-                if let Some(max) = table.type_.limits.max {
-                    if sz + n > (max as usize) {
-                        stack.push_value(-1i32);
-                        goto!(ip, unsafe { ip.add(1) });
-                    }
+                let max = table.type_.limits.max.unwrap_or(u32::MAX);
+                if sz + n > (max as usize) {
+                    stack.push_value(-1i32);
+                    goto!(ip, unsafe { ip.add(1) });
                 }
-                table.elems.reserve(n as usize);
+                table.elems.reserve(n);
                 for _ in 0..n {
                     table.elems.push(val);
                 }
@@ -837,9 +838,9 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let frame = stack.current_frame();
                 let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve_mut(tableaddr);
-                let n = unsafe { stack.pop_value().num.i32 } as usize;
+                let n = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let val = unsafe { stack.pop_value().ref_ };
-                let i = unsafe { stack.pop_value().num.i32 } as usize;
+                let i = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 if i + n > table.elems.len() {
                     return Err(WasmTrap {});
                 }

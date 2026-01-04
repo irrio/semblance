@@ -376,12 +376,12 @@ fn typecheck_externval(
             match_memtype(&etype, memtype, actual_size)
         }
         (WasmExternVal::Table(tableaddr), WasmImportDesc::Table(tabletype)) => {
-            let etype = &store
+            let externtable = &store
                 .tables
                 .try_resolve(*tableaddr)
-                .ok_or(WasmInstantiationError::InvalidTableAddr)?
-                .type_;
-            match_tabletype(etype, tabletype)
+                .ok_or(WasmInstantiationError::InvalidTableAddr)?;
+            let actual_size = externtable.elems.len();
+            match_tabletype(&externtable.type_, tabletype, actual_size)
         }
         _ => Err(WasmInstantiationError::InvalidExternval),
     }
@@ -411,7 +411,7 @@ fn match_memtype(
     memtype: &WasmMemType,
     actual_size: usize,
 ) -> WasmInstantiationResult {
-    if match_limits(&externtype.limits, &memtype.limits, Some(actual_size)) {
+    if match_limits(&externtype.limits, &memtype.limits, actual_size) {
         Ok(())
     } else {
         Err(WasmInstantiationError::InvalidExternMem)
@@ -421,9 +421,10 @@ fn match_memtype(
 fn match_tabletype(
     externtype: &WasmTableType,
     tabletype: &WasmTableType,
+    actual_size: usize,
 ) -> WasmInstantiationResult {
     if externtype.ref_type == tabletype.ref_type
-        && match_limits(&externtype.limits, &tabletype.limits, None)
+        && match_limits(&externtype.limits, &tabletype.limits, actual_size)
     {
         Ok(())
     } else {
@@ -431,12 +432,8 @@ fn match_tabletype(
     }
 }
 
-fn match_limits(
-    externlimits: &WasmLimits,
-    limits: &WasmLimits,
-    actual_size: Option<usize>,
-) -> bool {
-    let externmin = externlimits.min.max(actual_size.unwrap_or(0) as u32);
+fn match_limits(externlimits: &WasmLimits, limits: &WasmLimits, actual_size: usize) -> bool {
+    let externmin = externlimits.min.max(actual_size as u32);
     if externmin >= limits.min {
         match limits.max {
             None => true,
