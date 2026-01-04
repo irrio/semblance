@@ -540,7 +540,7 @@ impl WastInterpreter {
                 wast::core::WastRetCore::RefExtern(addr) => {
                     assert_eq!(*ty, WasmValueType::Ref(WasmRefType::ExternRef));
                     if let Some(addr) = addr {
-                        assert_eq!(*addr, unsafe { val.ref_.extern_.0 });
+                        assert_eq!(*addr + 1, unsafe { val.ref_.extern_.0 });
                     }
                 }
                 wast::core::WastRetCore::RefHost(_) => todo!(),
@@ -621,7 +621,7 @@ impl WastInterpreter {
                 },
                 wast::core::WastArgCore::RefExtern(addr) => WasmValue {
                     ref_: WasmRefValue {
-                        extern_: WasmExternAddr(*addr),
+                        extern_: WasmExternAddr(*addr + 1),
                     },
                 },
                 wast::core::WastArgCore::RefHost(_) => todo!("hostref arg"),
