@@ -111,8 +111,8 @@ round_robin() {
 }
 
 list_suites() {
-    for SUITE in testsuite/*.wast; do
-        if [[ "$SUITE" != *simd* && "$SUITE" != "testsuite/names.wast" ]]; then
+    for SUITE in spec/test/core/*.wast; do
+        if [[ "$SUITE" != *"names.wast" ]]; then
             echo "$SUITE"
         fi
     done
