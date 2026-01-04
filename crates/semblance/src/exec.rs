@@ -1155,14 +1155,16 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let winst = store.instances.resolve(frame.winst_id);
                 let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
                 let data = store.datas.resolve(winst.addr_of(*data_idx));
-                let data_bytes = data.data.ok_or(WasmTrap {})?;
+                let data_len = data.data.map(|d| d.len()).unwrap_or(0);
                 if d + n > mem.data.len() {
                     return Err(WasmTrap {});
                 }
-                if s + n > data_bytes.len() {
+                if s + n > data_len {
                     return Err(WasmTrap {});
                 }
-                (&mut mem.data[d..(d + n)]).copy_from_slice(&data_bytes[s..(s + n)]);
+                if n > 0 {
+                    (&mut mem.data[d..(d + n)]).copy_from_slice(&data.data.unwrap()[s..(s + n)]);
+                }
             }
             MemorySize => {
                 let frame = stack.current_frame();
