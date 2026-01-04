@@ -8,7 +8,7 @@ select
     total_directives - passed_directives as remaining_directives,
     wast_path
 from wast_execution
-where test_run_id=(select id from last_run)
+where test_run_id=(select id from last_run) and (total_directives - passed_directives) > 0
 order by remaining_directives desc
 limit 10;
 "
