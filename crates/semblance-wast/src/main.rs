@@ -53,6 +53,19 @@ struct WastInterpreter {
     current_inst: Option<WasmInstanceAddr>,
 }
 
+static HOSTCALL_PRINT_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn hostcall_print(
+    _store: &mut WasmStore,
+    _winst: WasmInstanceAddr,
+    _args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    Box::new([])
+}
+
 static HOSTCALL_PRINT_I32_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
     input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
     output_type: WasmResultType(Box::new([])),
@@ -186,6 +199,10 @@ impl WastInterpreter {
     fn new() -> Self {
         let mut store = WasmStore::new();
         let mut spectest_exports = HashMap::new();
+        spectest_exports.insert(
+            "print",
+            WasmExternVal::Func(store.alloc_hostfunc(&*HOSTCALL_PRINT_TYPE, &hostcall_print)),
+        );
         spectest_exports.insert(
             "print_i32",
             WasmExternVal::Func(
