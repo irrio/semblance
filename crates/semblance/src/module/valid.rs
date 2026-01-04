@@ -24,7 +24,7 @@ pub enum WasmValidationError {
     DuplicateExportName(String),
     MismatchedType {
         expected: WasmValueType,
-        actual: Option<MaybeUntyped>,
+        actual: MaybeUntyped,
     },
     MismatchedTableCopy {
         src: WasmRefType,
@@ -50,6 +50,7 @@ pub enum WasmValidationError {
         expected: usize,
         actual: usize,
     },
+    StackUnderflow,
 }
 
 pub type WasmValidationResult<T> = Result<T, WasmValidationError>;
@@ -1405,13 +1406,13 @@ fn validate_instr(
                             actual: types.len(),
                         });
                     }
-                    stack.pop_result_type(types)?;
+                    let popped = stack.pop_result_type_dyn(types)?;
                     let drop = stack.depth() - label_entry.min_stack_depth;
                     verified_labels.push(BreakTableEntry {
                         labelidx: *label_idx,
                         drop,
                     });
-                    stack.push_result_type(types);
+                    stack.push_result_type_dyn(&popped);
                 }
                 stack.pop_result_type(ty)?;
             }
@@ -1898,31 +1899,33 @@ impl TypeStack {
         }
     }
 
-    fn pop_checked(&self) -> Option<MaybeUntyped> {
-        if self.depth() > self.min_depth {
-            self.stack.borrow_mut().pop()
-        } else if self.unreachable {
-            Some(MaybeUntyped::UnknownType)
-        } else {
-            None
+    pub fn push_result_type_dyn(&self, result_type: &[MaybeUntyped]) {
+        for t in result_type {
+            self.push_dyn(*t);
         }
     }
 
+    fn pop_checked(&self) -> WasmValidationResult<MaybeUntyped> {
+        if self.depth() == self.min_depth && self.unreachable {
+            return Ok(MaybeUntyped::UnknownType);
+        }
+        if self.depth() == self.min_depth {
+            return Err(WasmValidationError::StackUnderflow);
+        }
+        Ok(self.stack.borrow_mut().pop().unwrap())
+    }
+
     pub fn pop_any(&mut self) -> WasmValidationResult<()> {
-        self.pop_checked()
-            .ok_or(WasmValidationError::MismatchedType {
-                actual: None,
-                // TODO: should be any type
-                expected: WasmValueType::Num(WasmNumType::I32),
-            })?;
+        self.pop_checked()?;
         Ok(())
     }
 
     pub fn pop_num_or_vec(&self) -> WasmValidationResult<MaybeUntyped> {
-        match self.pop_checked() {
-            Some(t @ MaybeUntyped::KnownType(WasmValueType::Num(_))) => Ok(t),
-            Some(t @ MaybeUntyped::KnownType(WasmValueType::Vec(_))) => Ok(t),
-            Some(t @ MaybeUntyped::UnknownType) => Ok(t),
+        let popped = self.pop_checked()?;
+        match popped {
+            t @ MaybeUntyped::KnownType(WasmValueType::Num(_)) => Ok(t),
+            t @ MaybeUntyped::KnownType(WasmValueType::Vec(_)) => Ok(t),
+            t @ MaybeUntyped::UnknownType => Ok(t),
             actual => Err(WasmValidationError::MismatchedType {
                 actual,
                 // TODO: should be num|vec
@@ -1931,25 +1934,40 @@ impl TypeStack {
         }
     }
 
-    pub fn pop(&self, expected: WasmValueType) -> WasmValidationResult<()> {
-        match self.pop_checked() {
-            Some(MaybeUntyped::KnownType(t)) if t == expected => Ok(()),
-            Some(MaybeUntyped::UnknownType) => Ok(()),
+    pub fn pop(&self, expected: WasmValueType) -> WasmValidationResult<MaybeUntyped> {
+        let popped = self.pop_checked()?;
+        match popped {
+            MaybeUntyped::KnownType(t) if t == expected => Ok(popped),
+            MaybeUntyped::UnknownType => Ok(popped),
             actual => Err(WasmValidationError::MismatchedType { expected, actual }),
         }
     }
 
-    pub fn pop_dyn(&self, expected: MaybeUntyped) -> WasmValidationResult<()> {
-        match expected {
-            MaybeUntyped::UnknownType => Ok(()),
-            MaybeUntyped::KnownType(t) => self.pop(t),
+    pub fn pop_dyn(&self, expected: MaybeUntyped) -> WasmValidationResult<MaybeUntyped> {
+        let ty = if let MaybeUntyped::KnownType(t) = expected {
+            t
+        } else {
+            t!(i32)
+        };
+        let popped = self.pop(ty);
+        // recover from type mismatch if expecting an unknown type
+        if let Err(WasmValidationError::MismatchedType {
+            expected: _,
+            actual,
+        }) = popped
+            && expected == MaybeUntyped::UnknownType
+        {
+            Ok(actual)
+        } else {
+            popped
         }
     }
 
     pub fn pop_ref_type(&self) -> WasmValidationResult<()> {
-        match self.pop_checked() {
-            Some(MaybeUntyped::KnownType(WasmValueType::Ref(_))) => Ok(()),
-            Some(MaybeUntyped::UnknownType) => Ok(()),
+        let popped = self.pop_checked()?;
+        match popped {
+            MaybeUntyped::KnownType(WasmValueType::Ref(_)) => Ok(()),
+            MaybeUntyped::UnknownType => Ok(()),
             actual => Err(WasmValidationError::MismatchedType {
                 expected: WasmValueType::Ref(WasmRefType::FuncRef), // TODO represent this type better (any ref type)
                 actual,
@@ -1962,6 +1980,17 @@ impl TypeStack {
             self.pop(*t)?;
         }
         Ok(())
+    }
+
+    pub fn pop_result_type_dyn(
+        &self,
+        result_type: &WasmResultType,
+    ) -> WasmValidationResult<Box<[MaybeUntyped]>> {
+        let mut popped = Vec::with_capacity(result_type.len());
+        for t in result_type.0.iter().rev() {
+            popped.push(self.pop(*t)?);
+        }
+        Ok(popped.into_boxed_slice())
     }
 
     pub fn depth(&self) -> usize {
