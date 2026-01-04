@@ -31,6 +31,7 @@ pub enum WasmValidationError {
         dst: WasmRefType,
     },
     MismatchedTableInit {
+        active: bool,
         table: WasmRefType,
         elem: WasmRefType,
     },
@@ -403,21 +404,29 @@ fn validate_elem(
         WasmElemMode::Active {
             table_idx,
             ref offset_expr,
-        } => validate_active_elem(table_idx, offset_expr, wmod_ctx),
+        } => validate_active_elem(elem.ref_type, table_idx, offset_expr, wmod_ctx),
         _ => Ok(()),
     }?;
     Ok(())
 }
 
 fn validate_active_elem(
+    ref_type: WasmRefType,
     table_idx: WasmTableIdx,
     offset_expr: &WasmExprRaw,
     wmod_ctx: &ModuleContext,
 ) -> WasmValidationResult<()> {
-    let _table = wmod_ctx
+    let table = wmod_ctx
         .tables
         .get(table_idx.0 as usize)
         .ok_or(WasmValidationError::InvalidTableIdx(table_idx.0))?;
+    if table.ref_type != ref_type {
+        return Err(WasmValidationError::MismatchedTableInit {
+            active: true,
+            table: table.ref_type,
+            elem: ref_type,
+        });
+    }
     validate_instr_sequence(
         offset_expr,
         wmod_ctx,
@@ -812,7 +821,6 @@ fn validate_instr(
             let stack = expr_ctx.stack();
             stack.pop(t)?;
             stack.pop(t!(i32))?;
-            stack.push(t);
         }
         TableSize { table_idx } => {
             let _table = wmod_ctx
@@ -875,6 +883,7 @@ fn validate_instr(
                 .ok_or(WasmValidationError::InvalidElemIdx(elem_idx.0))?;
             if table.ref_type != *elem {
                 return Err(WasmValidationError::MismatchedTableInit {
+                    active: false,
                     table: table.ref_type,
                     elem: *elem,
                 });

@@ -614,8 +614,20 @@ impl WastInterpreter {
         }
     }
 
-    fn eval_exec_wat(&mut self, _wat: &Wat) -> Result<DynamicWasmResult, WasmTrap> {
-        todo!("exec wat");
+    fn eval_exec_wat(&mut self, wat: &mut Wat) -> Result<DynamicWasmResult, WasmTrap> {
+        let wmod = Rc::new(self.eval_wat(wat).expect("failed to load module"));
+        let res = self.instantiate(wmod);
+        match res {
+            Ok(_) => Ok(DynamicWasmResult::void()),
+            Err(WasmInstantiationError::ConstExprTrapped(trap)) => Err(trap),
+            Err(WasmInstantiationError::StartFunctionTrapped(trap)) => Err(trap),
+            other @ _ => {
+                panic!(
+                    "Expected a runtime error, but got an instantiation error: {:?}",
+                    other
+                )
+            }
+        }
     }
 
     fn eval_get(

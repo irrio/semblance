@@ -1090,7 +1090,7 @@ fn decode_elem(bytes: &[u8]) -> WasmDecodeResult<Decoded<'_, WasmElem<WasmInstru
                 WasmElem {
                     ref_type,
                     init,
-                    elem_mode: WasmElemMode::Passive,
+                    elem_mode: WasmElemMode::Declarative,
                 },
                 bytes,
             ))
