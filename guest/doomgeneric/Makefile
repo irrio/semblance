@@ -1,7 +1,7 @@
 
 CC=clang
 LDFLAGS=-Wl,--no-entry
-CFLAGS=-Wall --target=wasm32 --sysroot=../sysroot -ffreestanding -nostdlib
+CFLAGS=-Wall --target=wasm32 --sysroot=../libc/target/sysroot -ffreestanding -nostdlib
 
 SRCDIR=src
 OBJDIR=target/build
