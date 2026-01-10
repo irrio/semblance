@@ -1,6 +1,3 @@
 [submodule "spec"]
 	path = spec
 	url = git@github.com:WebAssembly/spec.git
-[submodule "guest/doomgeneric"]
-	path = guest/doomgeneric
-	url = git@github.com:ozkl/doomgeneric.git
