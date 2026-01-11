@@ -48,3 +48,11 @@ extern double semblance_syscall_parse_f64(const char *str);
 
 WASM_IMPORT("semblance", "parse_i32")
 extern int32_t semblance_syscall_parse_i32(const char *str);
+
+// ------ gfx --------- //
+
+WASM_IMPORT("semblance", "init_window")
+extern void semblance_syscall_init_window(const char *title, int32_t width, int32_t height);
+
+WASM_IMPORT("semblance", "set_window_title")
+extern void semblance_syscall_set_window_title(const char *title);
