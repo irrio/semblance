@@ -22,7 +22,7 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fseek(FILE *stream, long int offset, int whence);
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream);
 int fclose(FILE *f);
-int fflush(FILE *);
+int fflush(FILE *f);
 long ftell(FILE *f);
 int remove(const char *path);
 int rename(const char *src, const char *dst);
