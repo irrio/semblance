@@ -1,7 +1,7 @@
-use std::sync::LazyLock;
+use std::{f64, sync::LazyLock};
 
 use semblance::{
-    inst::{WasmStore, WasmValue, table::WasmInstanceAddr},
+    inst::{WasmNumValue, WasmStore, WasmValue, table::WasmInstanceAddr},
     link::WasmLinker,
     module::{WasmFuncType, WasmNumType, WasmResultType, WasmValueType},
 };
@@ -65,6 +65,50 @@ fn syscall_set_window_title(
     Box::new([])
 }
 
+static SYSCALL_PARSE_I32_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // char *str
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_parse_i32(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let str = unsafe { args[0].num.i32 };
+    let str = guest_resolve_cstr(store, winst_id, str);
+    eprintln!("[guest] parse_i32({})", str);
+    Box::new([WasmValue {
+        num: WasmNumValue {
+            i32: str.parse().unwrap_or(-1),
+        },
+    }])
+}
+
+static SYSCALL_PARSE_F64_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // char *str
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::F64)])),
+});
+
+fn syscall_parse_f64(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let str = unsafe { args[0].num.i32 };
+    let str = guest_resolve_cstr(store, winst_id, str);
+    eprintln!("[guest] parse_f64({})", str);
+    Box::new([WasmValue {
+        num: WasmNumValue {
+            f64: str.parse().unwrap_or(f64::NAN),
+        },
+    }])
+}
+
 pub fn add_to_linker(linker: &mut WasmLinker) {
     linker.add_host_module(
         "semblance".to_string(),
@@ -80,6 +124,8 @@ pub fn add_to_linker(linker: &mut WasmLinker) {
                 &SYSCALL_SET_WINDOW_TITLE_TYPE,
                 &syscall_set_window_title,
             ),
+            ("parse_i32", &SYSCALL_PARSE_I32_TYPE, &syscall_parse_i32),
+            ("parse_f64", &SYSCALL_PARSE_F64_TYPE, &syscall_parse_f64),
         ],
     );
 }

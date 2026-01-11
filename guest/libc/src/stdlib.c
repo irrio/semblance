@@ -11,13 +11,13 @@ int system(const char *command) {
 }
 
 int atoi(const char *str) {
-    return 0;
+    return semblance_syscall_parse_i32(str);
 }
 
 double atof(const char *str) {
-    return 0;
+    return semblance_syscall_parse_f64(str);
 }
 
 int abs(int num) {
-    return num;
+    return __builtin_abs(num);
 }

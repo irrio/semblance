@@ -1,4 +1,4 @@
 
 double fabs(double f) {
-    return f;
+    return __builtin_fabs(f);
 }
