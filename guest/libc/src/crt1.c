@@ -1,8 +1,8 @@
 
-#include "stdlib.h"
-
 extern int main(int argc, char **argv);
 
-void _start() {
-    main(0, NULL);
+int _start() {
+    int argc = 1;
+    char *argv[1] = { "/doomgeneric.wasm" };
+    return main(argc, argv);
 }
