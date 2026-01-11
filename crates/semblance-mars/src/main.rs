@@ -1,6 +1,6 @@
 use std::{path::PathBuf, rc::Rc, sync::LazyLock};
 
-use sdl2::{event::Event, keyboard::Keycode};
+use sdl2::event::Event;
 use semblance::{
     inst::{WasmInvokeOptions, WasmStore, WasmValue, table::WasmInstanceAddr},
     link::WasmLinker,
@@ -23,16 +23,6 @@ fn syscall_exit(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let sdl_context = sdl2::init()?;
-    let video_subsystem = sdl_context.video()?;
-
-    let window = video_subsystem
-        .window("Semblance Mars", 800, 480)
-        .position_centered()
-        .build()?;
-
-    println!("Opened SDL2 Window: {}", window.title());
-
     let module_path = std::env::args().nth(1).expect("missing module path");
     let module_path = PathBuf::from(module_path);
     let mut linker = WasmLinker::new();
@@ -46,25 +36,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .instantiate(Rc::new(wmod), &externvals)
         .expect("failed to instantiate");
     let winst = store.instances.resolve(winst_id);
-    let funcaddr = winst
+    let initfunc = winst
         .resolve_export_fn_by_name("_start")
-        .expect("no _start symbol exported");
+        .expect("no _start func exported");
+    let tickfunc = winst
+        .resolve_export_fn_by_name("_tick")
+        .expect("no _tick func exported");
     store
-        .invoke(funcaddr, Box::new([]), WasmInvokeOptions::default())
-        .expect("guest trapped");
+        .invoke(initfunc, Box::new([]), WasmInvokeOptions::default())
+        .expect("guest trapped during init");
+
+    eprintln!("Guest initialized!");
+
+    let sdl_context = sdl2::init()?;
+    let video_subsystem = sdl_context.video()?;
+
+    let window = video_subsystem
+        .window("Semblance Mars", 800, 480)
+        .position_centered()
+        .build()?;
+
+    eprintln!("Opened SDL2 Window: {}", window.title());
 
     let mut event_pump = sdl_context.event_pump()?;
     'running: loop {
         for event in event_pump.poll_iter() {
             match event {
-                Event::Quit { .. }
-                | Event::KeyUp {
-                    keycode: Some(Keycode::ESCAPE),
-                    ..
-                } => {
+                Event::Quit { .. } => {
                     break 'running;
                 }
-                _ => (),
+                _ => {
+                    store
+                        .invoke(tickfunc, Box::new([]), WasmInvokeOptions::default())
+                        .expect("guest trapped during _tick");
+                }
             }
         }
     }
