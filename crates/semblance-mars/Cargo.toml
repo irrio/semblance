@@ -7,4 +7,5 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+semblance = { path = "../semblance" }
 sdl2 = "0.38.0"
