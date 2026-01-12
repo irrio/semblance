@@ -16,7 +16,7 @@ extern void semblance_syscall_panic(const char *msg) __attribute__((noreturn));
 // ----- io -------- //
 
 WASM_IMPORT("semblance", "fopen")
-extern int32_t semblance_syscall_fopen(const char *path, int flags);
+extern int32_t semblance_syscall_fopen(const char *path, const char *mode);
 
 WASM_IMPORT("semblance", "fwrite")
 extern int32_t semblance_syscall_fwrite(int fd, void *data, size_t len);

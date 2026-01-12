@@ -3,7 +3,8 @@ use std::{path::PathBuf, rc::Rc};
 use sdl2::event::Event;
 use semblance::{inst::WasmInvokeOptions, link::WasmLinker, module::WasmModule};
 
-mod global_state;
+mod guest_gfx;
+mod guest_io;
 mod syscalls;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -30,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("Guest initialized!");
 
     let mut event_pump =
-        global_state::use_sdl_context(|ctx| ctx.event_pump().expect("failed to get event pump"));
+        guest_gfx::use_sdl_context(|ctx| ctx.event_pump().expect("failed to get event pump"));
     'running: loop {
         for event in event_pump.poll_iter() {
             match event {

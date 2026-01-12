@@ -1,8 +1,23 @@
 
 #include "stdio.h"
+#include "internal/stdio.h"
+#include "semblance/syscall.h"
+#include "stdlib.h"
+
+struct FILE {
+    int fd;
+};
 
 FILE* stderr = NULL;
 FILE* stdout = NULL;
+
+int __stdio_init() {
+    stderr = fopen("/dev/stderr", "w");
+    if (stderr == NULL) return 1;
+    stdout = fopen("/dev/stdout", "w");
+    if (stderr == NULL) return 2;
+    return 0;
+}
 
 int snprintf(char *str, size_t size, const char *format, ...) {
     return 0;
@@ -33,7 +48,12 @@ int putchar(int c) {
 }
 
 FILE *fopen(const char *path, const char *mode) {
-    return NULL;
+    int fd = semblance_syscall_fopen(path, mode);
+    if (fd < 0) return NULL;
+    FILE* file = malloc(sizeof(FILE));
+    if (file == NULL) return NULL;
+    file->fd = fd;
+    return file;
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
@@ -49,23 +69,23 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
 }
 
 int fclose(FILE *f) {
-    return 0;
+    return -1;
 }
 
 int fflush(FILE *f) {
-    return 0;
+    return -1;
 }
 
 long ftell(FILE *f) {
-    return 0;
+    return -1;
 }
 
 int remove(const char *path) {
-    return 0;
+    return -1;
 }
 
 int rename(const char *src, const char *dst) {
-    return 0;
+    return -1;
 }
 
 int sscanf(const char *str, const char *format, ...) {

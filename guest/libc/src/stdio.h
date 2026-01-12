@@ -4,7 +4,7 @@
 #include "inttypes.h"
 #include "stdarg.h"
 
-typedef struct FILE {} FILE;
+typedef struct FILE FILE;
 
 int snprintf(char *str, size_t size, const char *format, ...);
 int fprintf(FILE *f, const char *format, ...);

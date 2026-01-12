@@ -1,4 +1,7 @@
 
+#include "internal/stdio.h"
+#include "semblance/syscall.h"
+
 extern void init(int argc, char **argv);
 extern void tick();
 
@@ -6,6 +9,9 @@ extern void tick();
 
 WASM_EXPORT("_start")
 void _start() {
+    int stdio_err = __stdio_init();
+    if (stdio_err) semblance_syscall_panic("failed to initialize stdio");
+
     int argc = 1;
     char *argv[1] = { "/doomgeneric.wasm" };
     return init(argc, argv);

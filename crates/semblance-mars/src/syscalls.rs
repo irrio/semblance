@@ -6,7 +6,7 @@ use semblance::{
     module::{WasmFuncType, WasmNumType, WasmResultType, WasmValueType},
 };
 
-use crate::{global_state, syscalls::util::guest_resolve_cstr};
+use crate::{guest_gfx, guest_io, syscalls::util::guest_resolve_cstr};
 
 static SYSCALL_EXIT_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
     input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
@@ -42,7 +42,7 @@ fn syscall_init_window(
     let height = unsafe { args[2].num.i32 } as u32;
     let title = util::guest_resolve_cstr(store, winst_id, title);
     eprintln!("[guest] init_window(\"{}\", {}, {})", title, width, height);
-    global_state::create_window(title, width, height);
+    guest_gfx::create_window(title, width, height);
     Box::new([])
 }
 
@@ -61,7 +61,7 @@ fn syscall_set_window_title(
     let title = unsafe { args[0].num.i32 };
     let title = guest_resolve_cstr(store, winst_id, title);
     eprintln!("[guest] set_window_title({})", title);
-    global_state::use_window_mut(|w| w.set_title(title)).expect("failed to set window title");
+    guest_gfx::use_window_mut(|w| w.set_title(title)).expect("failed to set window title");
     Box::new([])
 }
 
@@ -109,6 +109,48 @@ fn syscall_parse_f64(
     }])
 }
 
+static SYSCALL_FOPEN_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // char *path
+        WasmValueType::Num(WasmNumType::I32), // char *mode
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_fopen(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let path = unsafe { args[0].num.i32 };
+    let path = guest_resolve_cstr(store, winst_id, path);
+    let mode = unsafe { args[1].num.i32 };
+    let mode = guest_resolve_cstr(store, winst_id, mode);
+    eprintln!("[guest] fopen({}, {})", path, mode);
+    let fd = guest_io::fopen(path, mode);
+    Box::new([WasmValue {
+        num: WasmNumValue { i32: fd },
+    }])
+}
+
+static SYSCALL_PANIC_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // char *msg
+    ])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn syscall_panic(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let msg = unsafe { args[0].num.i32 };
+    let msg = guest_resolve_cstr(store, winst_id, msg);
+    eprintln!("[guest] panic({})", msg);
+    panic!("guest panicked: {}", msg);
+}
+
 pub fn add_to_linker(linker: &mut WasmLinker) {
     linker.add_host_module(
         "semblance".to_string(),
@@ -126,6 +168,8 @@ pub fn add_to_linker(linker: &mut WasmLinker) {
             ),
             ("parse_i32", &SYSCALL_PARSE_I32_TYPE, &syscall_parse_i32),
             ("parse_f64", &SYSCALL_PARSE_F64_TYPE, &syscall_parse_f64),
+            ("fopen", &SYSCALL_FOPEN_TYPE, &syscall_fopen),
+            ("panic", &SYSCALL_PANIC_TYPE, &syscall_panic),
         ],
     );
 }
