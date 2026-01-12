@@ -3,6 +3,7 @@
 #include "internal/stdio.h"
 #include "semblance/syscall.h"
 #include "stdlib.h"
+#include "string.h"
 
 struct FILE {
     int fd;
@@ -40,11 +41,18 @@ int printf(const char *format, ...) {
 }
 
 int puts(const char *str) {
-    return 0;
+    size_t len = strlen(str);
+    size_t written = fwrite(str, sizeof(char), len, stdout);
+    if (written != len) return EOF;
+    if (putchar('\n') == EOF) return EOF;
+    return len + 1;
 }
 
 int putchar(int c) {
-    return 0;
+    uint8_t data = c;
+    size_t written = fwrite(&data, sizeof(uint8_t), 1, stdout);
+    if (written != 1) return EOF;
+    return (int)data;
 }
 
 FILE *fopen(const char *path, const char *mode) {
@@ -65,7 +73,9 @@ int fseek(FILE *stream, long int offset, int whence) {
 }
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    return 0;
+    if (stream == NULL) return 0;
+    size_t written = semblance_syscall_fwrite(stream->fd, ptr, size * nmemb);
+    return written / size;
 }
 
 int fclose(FILE *f) {

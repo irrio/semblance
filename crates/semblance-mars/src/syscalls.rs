@@ -19,7 +19,6 @@ fn syscall_exit(
     args: &[WasmValue],
 ) -> Box<[WasmValue]> {
     let status = unsafe { args[0].num.i32 };
-    eprintln!("[guest] exit({})", status);
     std::process::exit(status);
 }
 
@@ -41,7 +40,6 @@ fn syscall_init_window(
     let width = unsafe { args[1].num.i32 } as u32;
     let height = unsafe { args[2].num.i32 } as u32;
     let title = util::guest_resolve_cstr(store, winst_id, title);
-    eprintln!("[guest] init_window(\"{}\", {}, {})", title, width, height);
     guest_gfx::create_window(title, width, height);
     Box::new([])
 }
@@ -60,7 +58,6 @@ fn syscall_set_window_title(
 ) -> Box<[WasmValue]> {
     let title = unsafe { args[0].num.i32 };
     let title = guest_resolve_cstr(store, winst_id, title);
-    eprintln!("[guest] set_window_title({})", title);
     guest_gfx::use_window_mut(|w| w.set_title(title)).expect("failed to set window title");
     Box::new([])
 }
@@ -79,7 +76,6 @@ fn syscall_parse_i32(
 ) -> Box<[WasmValue]> {
     let str = unsafe { args[0].num.i32 };
     let str = guest_resolve_cstr(store, winst_id, str);
-    eprintln!("[guest] parse_i32({})", str);
     Box::new([WasmValue {
         num: WasmNumValue {
             i32: str.parse().unwrap_or(-1),
@@ -101,7 +97,6 @@ fn syscall_parse_f64(
 ) -> Box<[WasmValue]> {
     let str = unsafe { args[0].num.i32 };
     let str = guest_resolve_cstr(store, winst_id, str);
-    eprintln!("[guest] parse_f64({})", str);
     Box::new([WasmValue {
         num: WasmNumValue {
             f64: str.parse().unwrap_or(f64::NAN),
@@ -126,10 +121,33 @@ fn syscall_fopen(
     let path = guest_resolve_cstr(store, winst_id, path);
     let mode = unsafe { args[1].num.i32 };
     let mode = guest_resolve_cstr(store, winst_id, mode);
-    eprintln!("[guest] fopen({}, {})", path, mode);
     let fd = guest_io::fopen(path, mode);
     Box::new([WasmValue {
         num: WasmNumValue { i32: fd },
+    }])
+}
+
+static SYSCALL_FWRITE_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // fd
+        WasmValueType::Num(WasmNumType::I32), // void *data
+        WasmValueType::Num(WasmNumType::I32), // len
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_fwrite(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let fd = unsafe { args[0].num.i32 };
+    let data = unsafe { args[1].num.i32 };
+    let len = unsafe { args[2].num.i32 };
+    let slice = util::guest_resolve_slice(store, winst_id, data, len);
+    let written = guest_io::fwrite(fd, slice);
+    Box::new([WasmValue {
+        num: WasmNumValue { i32: written },
     }])
 }
 
@@ -147,7 +165,6 @@ fn syscall_panic(
 ) -> Box<[WasmValue]> {
     let msg = unsafe { args[0].num.i32 };
     let msg = guest_resolve_cstr(store, winst_id, msg);
-    eprintln!("[guest] panic({})", msg);
     panic!("guest panicked: {}", msg);
 }
 
@@ -169,6 +186,7 @@ pub fn add_to_linker(linker: &mut WasmLinker) {
             ("parse_i32", &SYSCALL_PARSE_I32_TYPE, &syscall_parse_i32),
             ("parse_f64", &SYSCALL_PARSE_F64_TYPE, &syscall_parse_f64),
             ("fopen", &SYSCALL_FOPEN_TYPE, &syscall_fopen),
+            ("fwrite", &SYSCALL_FWRITE_TYPE, &syscall_fwrite),
             ("panic", &SYSCALL_PANIC_TYPE, &syscall_panic),
         ],
     );
@@ -189,5 +207,20 @@ mod util {
         }
         let cstr = CStr::from_bytes_until_nul(&mem.data[addr..]).expect("invalid cstr from guest");
         cstr.to_str().expect("invalid utf8 in guest str")
+    }
+
+    pub fn guest_resolve_slice(
+        store: &WasmStore,
+        winst_id: WasmInstanceAddr,
+        addr: i32,
+        len: i32,
+    ) -> &[u8] {
+        let addr = addr as u32 as usize;
+        let len = len as u32 as usize;
+        let winst = store.instances.resolve(winst_id);
+        let mem = store.mems.resolve(winst.addr_of(WasmMemIdx::ZERO));
+        mem.data
+            .get(addr..(addr + len))
+            .expect("slice out of range")
     }
 }

@@ -19,7 +19,7 @@ WASM_IMPORT("semblance", "fopen")
 extern int32_t semblance_syscall_fopen(const char *path, const char *mode);
 
 WASM_IMPORT("semblance", "fwrite")
-extern int32_t semblance_syscall_fwrite(int fd, void *data, size_t len);
+extern size_t semblance_syscall_fwrite(int fd, const void *data, size_t len);
 
 WASM_IMPORT("semblance", "ftell")
 extern int64_t semblance_syscall_ftell(int fd);
