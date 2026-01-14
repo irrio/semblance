@@ -246,7 +246,11 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
 }
 
 int fseek(FILE *stream, long int offset, int whence) {
-    return 0;
+    if (stream == NULL) return 1;
+    if (stream->kind == stream_kind_fd) {
+        return semblance_syscall_fseek(stream->data.fd, offset, whence);
+    }
+    return 1;
 }
 
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {

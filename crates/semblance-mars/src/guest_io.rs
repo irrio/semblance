@@ -1,6 +1,6 @@
 use std::{
     cell::RefCell,
-    io::{Read, Seek, Write},
+    io::{Read, Seek, SeekFrom, Write},
 };
 
 thread_local! {
@@ -164,6 +164,28 @@ pub fn ftell(fd: i32) -> i64 {
             reader.stream_position().map(|i| i as i64).unwrap_or(-1)
         } else {
             -1
+        }
+    })
+}
+
+pub fn fseek(fd: i32, offset: i64, whence: i32) -> i32 {
+    with_io_table_mut(|io| {
+        let idx = fd as u32 as usize;
+        if idx >= io.0.len() {
+            return 1;
+        }
+        let entry = &mut io.0[idx];
+        if let Some(reader) = entry.as_reader() {
+            let seekfrom = match whence {
+                0 => SeekFrom::Start(offset as u64),
+                1 => SeekFrom::Current(offset),
+                2 => SeekFrom::End(offset),
+                _ => return 1,
+            };
+            let res = reader.seek(seekfrom);
+            res.map(|_| 0).unwrap_or(1)
+        } else {
+            1
         }
     })
 }

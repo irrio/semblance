@@ -189,6 +189,29 @@ fn syscall_ftell(
     }])
 }
 
+static SYSCALL_FSEEK_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // fd
+        WasmValueType::Num(WasmNumType::I64), // offset
+        WasmValueType::Num(WasmNumType::I32), // whence
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_fseek(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let fd = unsafe { args[0].num.i32 };
+    let offset = unsafe { args[1].num.i64 };
+    let whence = unsafe { args[2].num.i32 };
+    let res = guest_io::fseek(fd, offset, whence);
+    Box::new([WasmValue {
+        num: WasmNumValue { i32: res },
+    }])
+}
+
 static SYSCALL_FFLUSH_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
     input_type: WasmResultType(Box::new([
         WasmValueType::Num(WasmNumType::I32), // fd
@@ -271,6 +294,7 @@ pub fn add_to_linker(linker: &mut WasmLinker) {
             ("fread", &SYSCALL_FREAD_TYPE, &syscall_fread),
             ("fwrite", &SYSCALL_FWRITE_TYPE, &syscall_fwrite),
             ("ftell", &SYSCALL_FTELL_TYPE, &syscall_ftell),
+            ("fseek", &SYSCALL_FSEEK_TYPE, &syscall_fseek),
             ("fflush", &SYSCALL_FFLUSH_TYPE, &syscall_fflush),
             ("panic", &SYSCALL_PANIC_TYPE, &syscall_panic),
         ],

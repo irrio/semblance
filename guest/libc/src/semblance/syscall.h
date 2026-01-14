@@ -24,6 +24,9 @@ extern size_t semblance_syscall_fwrite(int fd, const void *data, size_t len);
 WASM_IMPORT("semblance", "ftell")
 extern int64_t semblance_syscall_ftell(int fd);
 
+WASM_IMPORT("semblance", "fseek")
+extern int32_t semblance_syscall_fseek(int fd, int64_t offset, int32_t whence);
+
 WASM_IMPORT("semblance", "fflush")
 extern int32_t semblance_syscall_fflush(int fd);
 
