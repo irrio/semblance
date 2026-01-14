@@ -127,6 +127,87 @@ fn syscall_fopen(
     }])
 }
 
+static SYSCALL_FREAD_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // fd
+        WasmValueType::Num(WasmNumType::I32), // void *data
+        WasmValueType::Num(WasmNumType::I32), // len
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_fread(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let fd = unsafe { args[0].num.i32 };
+    let data = unsafe { args[1].num.i32 };
+    let len = unsafe { args[2].num.i32 };
+    let slice = util::guest_resolve_slice_mut(store, winst_id, data, len);
+    let read = guest_io::fread(fd, slice);
+    Box::new([WasmValue {
+        num: WasmNumValue { i32: read },
+    }])
+}
+
+static SYSCALL_FCLOSE_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // fd
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_fclose(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let fd = unsafe { args[0].num.i32 };
+    let res = guest_io::fclose(fd);
+    Box::new([WasmValue {
+        num: WasmNumValue { i32: res },
+    }])
+}
+
+static SYSCALL_FTELL_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // fd
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I64)])),
+});
+
+fn syscall_ftell(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let fd = unsafe { args[0].num.i32 };
+    let res = guest_io::ftell(fd);
+    Box::new([WasmValue {
+        num: WasmNumValue { i64: res },
+    }])
+}
+
+static SYSCALL_FFLUSH_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // fd
+    ])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_fflush(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let fd = unsafe { args[0].num.i32 };
+    let res = guest_io::fflush(fd);
+    Box::new([WasmValue {
+        num: WasmNumValue { i32: res },
+    }])
+}
+
 static SYSCALL_FWRITE_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
     input_type: WasmResultType(Box::new([
         WasmValueType::Num(WasmNumType::I32), // fd
@@ -186,7 +267,11 @@ pub fn add_to_linker(linker: &mut WasmLinker) {
             ("parse_i32", &SYSCALL_PARSE_I32_TYPE, &syscall_parse_i32),
             ("parse_f64", &SYSCALL_PARSE_F64_TYPE, &syscall_parse_f64),
             ("fopen", &SYSCALL_FOPEN_TYPE, &syscall_fopen),
+            ("fclose", &SYSCALL_FCLOSE_TYPE, &syscall_fclose),
+            ("fread", &SYSCALL_FREAD_TYPE, &syscall_fread),
             ("fwrite", &SYSCALL_FWRITE_TYPE, &syscall_fwrite),
+            ("ftell", &SYSCALL_FTELL_TYPE, &syscall_ftell),
+            ("fflush", &SYSCALL_FFLUSH_TYPE, &syscall_fflush),
             ("panic", &SYSCALL_PANIC_TYPE, &syscall_panic),
         ],
     );
@@ -221,6 +306,21 @@ mod util {
         let mem = store.mems.resolve(winst.addr_of(WasmMemIdx::ZERO));
         mem.data
             .get(addr..(addr + len))
+            .expect("slice out of range")
+    }
+
+    pub fn guest_resolve_slice_mut(
+        store: &mut WasmStore,
+        winst_id: WasmInstanceAddr,
+        addr: i32,
+        len: i32,
+    ) -> &mut [u8] {
+        let addr = addr as u32 as usize;
+        let len = len as u32 as usize;
+        let winst = store.instances.resolve(winst_id);
+        let mem = store.mems.resolve_mut(winst.addr_of(WasmMemIdx::ZERO));
+        mem.data
+            .get_mut(addr..(addr + len))
             .expect("slice out of range")
     }
 }

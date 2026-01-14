@@ -44,6 +44,14 @@ static size_t bufwrite(buf_stream_t *buf_state, const void *data, size_t len) {
     return len;
 }
 
+static size_t bufread(buf_stream_t *buf_state, void *dst, size_t len) {
+    size_t buf_size = buf_state->end - buf_state->start;
+    if (len > buf_size) return 0;
+    __builtin_memcpy(dst, buf_state->start, len);
+    buf_state->start += len;
+    return len;
+}
+
 static size_t fwrite_str(FILE *f, char *str) {
     size_t len = strlen(str);
     return fwrite(str, sizeof(char), len, f);
@@ -224,7 +232,17 @@ FILE *fopen(const char *path, const char *mode) {
 }
 
 size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) {
-    return 0;
+    size_t read = 0;
+    if (stream == NULL) return 0;
+    switch (stream->kind) {
+        case stream_kind_fd:
+            read = semblance_syscall_fread(stream->data.fd, ptr, size * nmemb);
+            break;
+        case stream_kind_buf:
+            read = bufread(&stream->data.buf_state, ptr, size * nmemb);
+            break;
+    }
+    return read / size;
 }
 
 int fseek(FILE *stream, long int offset, int whence) {
@@ -248,14 +266,26 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream) {
 }
 
 int fclose(FILE *f) {
-    return -1;
+    if (f == NULL) return -1;
+    if (f->kind == stream_kind_fd) {
+        return semblance_syscall_fclose(f->data.fd);
+    }
+    return 0;
 }
 
 int fflush(FILE *f) {
-    return -1;
+    if (f == NULL) return -1;
+    if (f->kind == stream_kind_fd) {
+        return semblance_syscall_fflush(f->data.fd);
+    }
+    return 0;
 }
 
 long ftell(FILE *f) {
+    if (f == NULL) return -1;
+    if (f->kind == stream_kind_fd) {
+        return semblance_syscall_ftell(f->data.fd);
+    }
     return -1;
 }
 

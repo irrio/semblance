@@ -32,15 +32,17 @@ int strcmp(const char *s1, const char *s2) {
         s1++;
         s2++;
     }
-    return *(uint8_t*)s1 - *(uint8_t*)s2;
+    return *(int8_t*)s1 - *(int8_t*)s2;
 }
 
 int strncmp(const char *s1, const char *s2, size_t n) {
     size_t i;
     for (i = 0; i < n; i++) {
-        if (s1[i] == '\0' || s1[i] != s2[i]) break;
+        if (s1[i] == '\0' || s1[i] != s2[i]) {
+            return ((int8_t*)s1)[i] - ((int8_t*)s2)[i];
+        }
     }
-    return ((uint8_t*)s1)[i] - ((uint8_t*)s2)[i];
+    return 0;
 }
 
 int strcasecmp(const char *s1, const char *s2) {
@@ -48,15 +50,17 @@ int strcasecmp(const char *s1, const char *s2) {
         s1++;
         s2++;
     }
-    return toupper(*(uint8_t*)s1) - toupper(*(uint8_t*)s2);
+    return toupper(*(int8_t*)s1) - toupper(*(int8_t*)s2);
 }
 
 int strncasecmp(const char *s1, const char *s2, size_t n) {
     size_t i;
     for (i = 0; i < n; i++) {
-        if (s1[i] == '\0' || toupper(s1[i]) != toupper(s2[i])) break;
+        if (s1[i] == '\0' || toupper(s1[i]) != toupper(s2[i])) {
+            return toupper(((int8_t*)s1)[i]) - toupper(((int8_t*)s2)[i]);
+        }
     }
-    return ((uint8_t*)s1)[i] - ((uint8_t*)s2)[i];
+    return 0;
 }
 
 char *strrchr(const char *s, int c) {
