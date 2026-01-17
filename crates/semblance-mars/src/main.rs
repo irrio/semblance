@@ -31,8 +31,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoke(initfunc, Box::new([]), WasmInvokeOptions::default())
         .expect("guest trapped during init");
 
-    eprintln!("Guest initialized!");
-
     let mut event_pump =
         guest_gfx::use_sdl_context(|ctx| ctx.event_pump().expect("failed to get event pump"));
     'running: loop {
