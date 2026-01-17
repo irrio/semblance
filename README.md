@@ -77,6 +77,10 @@ This should output:
 Hello, World!
 ```
 
+## DOOM
+
+![DOOM Screencap](./media/screencap.gif)
+
 ## Contributing
 
 Since this project is primarily for my personal learning purposes,
