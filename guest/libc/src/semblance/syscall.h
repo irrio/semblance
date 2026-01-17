@@ -19,7 +19,7 @@ WASM_IMPORT("semblance", "fopen")
 extern int32_t semblance_syscall_fopen(const char *path, const char *mode);
 
 WASM_IMPORT("semblance", "fwrite")
-extern size_t semblance_syscall_fwrite(int fd, const void *data, size_t len);
+extern int64_t semblance_syscall_fwrite(int fd, const void *data, size_t len);
 
 WASM_IMPORT("semblance", "ftell")
 extern int64_t semblance_syscall_ftell(int fd);
@@ -59,3 +59,25 @@ extern void semblance_syscall_init_window(const char *title, int32_t width, int3
 
 WASM_IMPORT("semblance", "set_window_title")
 extern void semblance_syscall_set_window_title(const char *title);
+
+WASM_IMPORT("semblance", "render")
+extern void semblance_syscall_render(const uint32_t *pixels, int32_t width, int32_t height);
+
+// ------ timers --------- //
+
+WASM_IMPORT("semblance", "get_ticks_ms")
+extern size_t semblance_syscall_get_ticks_ms();
+
+WASM_IMPORT("semblance", "sleep_ms")
+extern void semblance_syscall_sleep_ms(size_t ms);
+
+// ------ input --------- //
+
+typedef struct read_key_result_t {
+    int read;
+    int pressed;
+    int key_code;
+} read_key_result_t;
+
+WASM_IMPORT("semblance", "read_key")
+extern read_key_result_t semblance_syscall_read_key();

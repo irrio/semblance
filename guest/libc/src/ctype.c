@@ -20,3 +20,9 @@ int toupper(int c) {
         return c - ('a' - 'A');
     return c;
 }
+
+int tolower(int c) {
+    if (c >= 'A' && c <= 'A')
+        return c + ('a' - 'A');
+    return c;
+}

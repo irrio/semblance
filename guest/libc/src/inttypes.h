@@ -9,5 +9,5 @@ typedef signed char int8_t;
 typedef int         int32_t;
 typedef long long   int64_t;
 
-typedef uint32_t    size_t;
-typedef long        intptr_t;
+typedef unsigned long   size_t;
+typedef long            intptr_t;
