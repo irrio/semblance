@@ -12,7 +12,7 @@ use std::{
 
 struct WindowState {
     canvas: WindowCanvas,
-    texture_creator: TextureCreator<WindowContext>,
+    _texture_creator: TextureCreator<WindowContext>,
     texture: Texture,
 }
 
@@ -58,7 +58,7 @@ pub fn create_window(title: &str, width: u32, height: u32) {
             .expect("failed to create texture");
         SDL_WINDOW.set(Some(WindowState {
             canvas,
-            texture_creator,
+            _texture_creator: texture_creator,
             texture,
         }));
     })
@@ -84,7 +84,7 @@ pub fn render(pixels: &[u8], width: u32) {
     SDL_WINDOW.with_borrow_mut(|state| {
         if let Some(WindowState {
             canvas,
-            texture_creator: _,
+            _texture_creator: _,
             texture,
         }) = state
         {

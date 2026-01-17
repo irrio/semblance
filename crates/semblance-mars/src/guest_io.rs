@@ -55,10 +55,6 @@ impl IoTableEntry {
     }
 }
 
-fn with_io_table<T, F: FnOnce(&IoTable) -> T>(f: F) -> T {
-    IO_TABLE.with_borrow(f)
-}
-
 fn with_io_table_mut<T, F: FnOnce(&mut IoTable) -> T>(f: F) -> T {
     IO_TABLE.with_borrow_mut(f)
 }
