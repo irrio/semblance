@@ -16,7 +16,7 @@ macro_rules! mem_load {
         let ea = i + ($memarg.offset as usize);
         const N: usize = std::mem::size_of::<$t>();
         if ea + N > mem.data.len() {
-            return Err(WasmTrap {});
+            return Err(WasmTrap("out of bounds memory access"));
         }
         let bytes = mem.data[ea..].first_chunk::<N>().unwrap();
         let val = <$t>::from_le_bytes(*bytes);
@@ -35,7 +35,7 @@ macro_rules! mem_store {
         let ea = i + ($memarg.offset as usize);
         const N: usize = std::mem::size_of::<$t2>();
         if ea + N > mem.data.len() {
-            return Err(WasmTrap {});
+            return Err(WasmTrap("out of bounds memory access"));
         }
         (&mut mem.data[ea..(ea + N)]).copy_from_slice(&(val as $t2).to_le_bytes());
     };
@@ -206,20 +206,24 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             I32DivS => {
                 let b = unsafe { stack.pop_value().num.i32 };
                 let a = unsafe { stack.pop_value().num.i32 };
-                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                let out = a
+                    .checked_div(b)
+                    .ok_or(WasmTrap("illegal integer division"))?;
                 stack.push_value(out);
             }
             I32DivU => {
                 let b = unsafe { stack.pop_value().num.i32 } as u32;
                 let a = unsafe { stack.pop_value().num.i32 } as u32;
-                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                let out = a
+                    .checked_div(b)
+                    .ok_or(WasmTrap("illegal integer division"))?;
                 stack.push_value(out as i32);
             }
             I32RemS => {
                 let b = unsafe { stack.pop_value().num.i32 };
                 let a = unsafe { stack.pop_value().num.i32 };
                 if b == 0 {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("divide by zero"));
                 }
                 stack.push_value(a.wrapping_rem(b));
             }
@@ -227,7 +231,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let b = unsafe { stack.pop_value().num.i32 } as u32;
                 let a = unsafe { stack.pop_value().num.i32 } as u32;
                 if b == 0 {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("divide by zero"));
                 }
                 let out = a.wrapping_rem(b);
                 stack.push_value(out as i32);
@@ -356,20 +360,20 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             I64DivS => {
                 let b = unsafe { stack.pop_value().num.i64 };
                 let a = unsafe { stack.pop_value().num.i64 };
-                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                let out = a.checked_div(b).ok_or(WasmTrap("divide by zero"))?;
                 stack.push_value(out);
             }
             I64DivU => {
                 let b = unsafe { stack.pop_value().num.i64 } as u64;
                 let a = unsafe { stack.pop_value().num.i64 } as u64;
-                let out = a.checked_div(b).ok_or(WasmTrap {})?;
+                let out = a.checked_div(b).ok_or(WasmTrap("divide by zero"))?;
                 stack.push_value(out as i64);
             }
             I64RemS => {
                 let b = unsafe { stack.pop_value().num.i64 };
                 let a = unsafe { stack.pop_value().num.i64 };
                 if b == 0 {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("divide by zero"));
                 }
                 stack.push_value(a.wrapping_rem(b));
             }
@@ -377,7 +381,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let b = unsafe { stack.pop_value().num.i64 } as u64;
                 let a = unsafe { stack.pop_value().num.i64 } as u64;
                 if b == 0 {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("divide by zero"));
                 }
                 stack.push_value(a.wrapping_rem(b) as i64);
             }
@@ -639,22 +643,26 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             }
             I32TruncF32S => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                let out = trunc_float_checked!(a, f32 => i32).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f32 => i32)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out);
             }
             I32TruncF32U => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                let out = trunc_float_checked!(a, f32 => u32).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f32 => u32)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out as i32);
             }
             I32TruncF64S => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                let out = trunc_float_checked!(a, f64 => i32).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f64 => i32)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out);
             }
             I32TruncF64U => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                let out = trunc_float_checked!(a, f64 => u32).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f64 => u32)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out as i32);
             }
             I64ExtendI32S => {
@@ -667,22 +675,26 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
             }
             I64TruncF32S => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                let out = trunc_float_checked!(a, f32 => i64).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f32 => i64)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out);
             }
             I64TruncF32U => {
                 let a = unsafe { stack.pop_value().num.f32 };
-                let out = trunc_float_checked!(a, f32 => u64).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f32 => u64)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out as i64);
             }
             I64TruncF64S => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                let out = trunc_float_checked!(a, f64 => i64).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f64 => i64)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out);
             }
             I64TruncF64U => {
                 let a = unsafe { stack.pop_value().num.f64 };
-                let out = trunc_float_checked!(a, f64 => u64).ok_or(WasmTrap {})?;
+                let out = trunc_float_checked!(a, f64 => u64)
+                    .ok_or(WasmTrap("illegal float conversion"))?;
                 stack.push_value(out as i64);
             }
             F32ConvertI32S => {
@@ -798,7 +810,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let frame = stack.current_frame();
                 let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve(tableaddr);
-                let item = table.elems.get(i).ok_or(WasmTrap {})?;
+                let item = table
+                    .elems
+                    .get(i)
+                    .ok_or(WasmTrap("out of bounds table access"))?;
                 stack.push_value(*item);
             }
             TableSet { table_idx } => {
@@ -807,7 +822,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let frame = stack.current_frame();
                 let tableaddr = store.instances.resolve(frame.winst_id).addr_of(*table_idx);
                 let table = store.tables.resolve_mut(tableaddr);
-                let item = table.elems.get_mut(i).ok_or(WasmTrap {})?;
+                let item = table
+                    .elems
+                    .get_mut(i)
+                    .ok_or(WasmTrap("out of bounds table access"))?;
                 *item = unsafe { val.ref_ };
             }
             TableSize { table_idx } => {
@@ -842,7 +860,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let val = unsafe { stack.pop_value().ref_ };
                 let i = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 if i + n > table.elems.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds table access"));
                 }
                 for idx in i..(i + n) {
                     table.elems[idx] = val;
@@ -859,7 +877,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 if tableaddr_dst == tableaddr_src {
                     let table = store.tables.resolve_mut(tableaddr_dst);
                     if s.max(d) + n > table.elems.len() {
-                        return Err(WasmTrap {});
+                        return Err(WasmTrap("out of bounds table access"));
                     }
                     unsafe {
                         std::ptr::copy(
@@ -872,10 +890,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                     let (table_dst, table_src) =
                         store.tables.resolve_multi_mut(tableaddr_dst, tableaddr_src);
                     if s + n > table_src.elems.len() {
-                        return Err(WasmTrap {});
+                        return Err(WasmTrap("out of bounds table access"));
                     }
                     if d + n > table_dst.elems.len() {
-                        return Err(WasmTrap {});
+                        return Err(WasmTrap("out of bounds table access"));
                     }
                     (&mut table_dst.elems[d..(d + n)])
                         .copy_from_slice(&table_src.elems[s..(s + n)]);
@@ -893,10 +911,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let table = store.tables.resolve_mut(winst.addr_of(*table_idx));
                 let elem = store.elems.resolve(winst.addr_of(*elem_idx));
                 if d + n > table.elems.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds table access"));
                 }
                 if s + n > elem.elem.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds table access"));
                 }
                 (&mut table.elems[d..(d + n)]).copy_from_slice(&elem.elem[s..(s + n)]);
             }
@@ -937,7 +955,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 frame.locals[local_idx.0 as usize] = val;
                 stack.push_value(val);
             }
-            Unreachable => return Err(WasmTrap {}),
+            Unreachable => return Err(WasmTrap("unreachable")),
             Nop => {}
             Block { block_type: _, imm } => {
                 stack.push_label(WasmLabel {
@@ -1041,16 +1059,16 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let ft_expect = &store.instances.resolve(winst_id).wmod.types[type_idx.0 as usize];
                 let i = unsafe { stack.pop_value().num.i32 } as usize;
                 if i >= table.elems.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds table access"));
                 }
                 let r = table.elems[i];
                 if unsafe { r.func }.is_null() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("uninitialized element"));
                 }
                 let func = store.funcs.resolve(unsafe { r.func });
                 let ft_actual = &*func.type_;
                 if ft_actual != ft_expect {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("call_indirect type mismatch"));
                 }
                 invoke!(func, stack, store, winst_id, ip);
             }
@@ -1158,10 +1176,10 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let data = store.datas.resolve(winst.addr_of(*data_idx));
                 let data_len = data.data.map(|d| d.len()).unwrap_or(0);
                 if d + n > mem.data.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds memory access"));
                 }
                 if s + n > data_len {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds data access"));
                 }
                 if n > 0 {
                     (&mut mem.data[d..(d + n)]).copy_from_slice(&data.data.unwrap()[s..(s + n)]);
@@ -1200,7 +1218,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let val = unsafe { stack.pop_value().num.i32 };
                 let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 if d + n > mem.data.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds memory access"));
                 }
                 for byte in &mut mem.data[d..(d + n)] {
                     *byte = val as u8
@@ -1214,7 +1232,7 @@ pub fn exec(stack: &mut WasmStack, store: &mut WasmStore, expr: &WasmExpr) -> Re
                 let s = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 let d = unsafe { stack.pop_value().num.i32 } as u32 as usize;
                 if s.max(d) + n > mem.data.len() {
-                    return Err(WasmTrap {});
+                    return Err(WasmTrap("out of bounds memory access"));
                 }
                 unsafe {
                     std::ptr::copy(mem.data.as_ptr().add(s), mem.data.as_mut_ptr().add(d), n);

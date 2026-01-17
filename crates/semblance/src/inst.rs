@@ -86,7 +86,7 @@ impl WasmStack {
 
     pub fn push_label(&mut self, label: WasmLabel) -> Result<(), WasmTrap> {
         if self.control_stack.len() >= self.max_control_stack_depth {
-            return Err(WasmTrap {});
+            return Err(WasmTrap("resource exhaustion"));
         }
         self.control_stack.push(ControlStackEntry::Label(label));
         Ok(())
@@ -94,7 +94,7 @@ impl WasmStack {
 
     pub fn push_frame(&mut self, frame: WasmFrame) -> Result<(), WasmTrap> {
         if self.control_stack.len() >= self.max_control_stack_depth {
-            return Err(WasmTrap {});
+            return Err(WasmTrap("resource exhaustion"));
         }
         self.control_stack.push(ControlStackEntry::Frame(frame));
         Ok(())
@@ -546,7 +546,7 @@ impl PartialEq for DynamicWasmResult {
 }
 
 #[derive(Debug)]
-pub struct WasmTrap {}
+pub struct WasmTrap(pub &'static str);
 
 #[derive(Clone, Copy)]
 pub union WasmValue {
