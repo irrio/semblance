@@ -3,7 +3,10 @@ use std::{path::PathBuf, rc::Rc};
 use sdl2::event::Event;
 use semblance::{inst::WasmInvokeOptions, link::WasmLinker, module::WasmModule};
 
+use crate::guest_input::QueuedKeyEvent;
+
 mod guest_gfx;
+mod guest_input;
 mod guest_io;
 mod syscalls;
 
@@ -38,13 +41,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Event::Quit { .. } => {
                     break 'running;
                 }
-                _ => {
-                    store
-                        .invoke(tickfunc, Box::new([]), WasmInvokeOptions::default())
-                        .expect("guest trapped during _tick");
+                Event::KeyDown {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    guest_input::enqueue_key(QueuedKeyEvent {
+                        pressed: true,
+                        keycode,
+                    });
                 }
+                Event::KeyUp {
+                    keycode: Some(keycode),
+                    ..
+                } => {
+                    guest_input::enqueue_key(QueuedKeyEvent {
+                        pressed: false,
+                        keycode,
+                    });
+                }
+                _ => {}
             }
         }
+        store
+            .invoke(tickfunc, Box::new([]), WasmInvokeOptions::default())
+            .expect("guest trapped during _tick");
     }
 
     Ok(())

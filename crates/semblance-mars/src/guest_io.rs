@@ -88,7 +88,7 @@ pub fn fopen(path: &str, mode: &str) -> i32 {
     }
 }
 
-pub fn fwrite(fd: i32, data: &[u8]) -> i32 {
+pub fn fwrite(fd: i32, data: &[u8]) -> i64 {
     with_io_table_mut(|io| {
         let idx = fd as u32 as usize;
         if idx >= io.0.len() {
@@ -98,7 +98,7 @@ pub fn fwrite(fd: i32, data: &[u8]) -> i32 {
         if let Some(writer) = entry.as_writer() {
             let res = writer.write_all(data);
             match res {
-                Ok(_) => data.len() as i32,
+                Ok(_) => data.len() as i64,
                 Err(_) => 0,
             }
         } else {

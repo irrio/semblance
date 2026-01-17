@@ -6,7 +6,7 @@ use semblance::{
     module::{WasmFuncType, WasmNumType, WasmResultType, WasmValueType},
 };
 
-use crate::{guest_gfx, guest_io, syscalls::util::guest_resolve_cstr};
+use crate::{guest_gfx, guest_input, guest_io, syscalls::util::guest_resolve_cstr};
 
 static SYSCALL_EXIT_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
     input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
@@ -237,7 +237,7 @@ static SYSCALL_FWRITE_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncTy
         WasmValueType::Num(WasmNumType::I32), // void *data
         WasmValueType::Num(WasmNumType::I32), // len
     ])),
-    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I64)])),
 });
 
 fn syscall_fwrite(
@@ -251,7 +251,7 @@ fn syscall_fwrite(
     let slice = util::guest_resolve_slice(store, winst_id, data, len);
     let written = guest_io::fwrite(fd, slice);
     Box::new([WasmValue {
-        num: WasmNumValue { i32: written },
+        num: WasmNumValue { i64: written },
     }])
 }
 
@@ -270,6 +270,97 @@ fn syscall_panic(
     let msg = unsafe { args[0].num.i32 };
     let msg = guest_resolve_cstr(store, winst_id, msg);
     panic!("guest panicked: {}", msg);
+}
+
+static SYSCALL_GET_TICKS_MS_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([])),
+    output_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+});
+
+fn syscall_get_ticks_ms(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    _args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let ms = guest_gfx::get_ticks_ms();
+    return Box::new([WasmValue {
+        num: WasmNumValue {
+            i32: ms as u32 as i32,
+        },
+    }]);
+}
+
+static SYSCALL_SLEEP_MS_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([WasmValueType::Num(WasmNumType::I32)])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn syscall_sleep_ms(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let ms = unsafe { args[0].num.i32 };
+    guest_gfx::delay_ms(ms as u32 as u64);
+    return Box::new([]);
+}
+
+static SYSCALL_RENDER_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // void* pixel_data
+        WasmValueType::Num(WasmNumType::I32), // pixel width
+        WasmValueType::Num(WasmNumType::I32), // pixel height
+    ])),
+    output_type: WasmResultType(Box::new([])),
+});
+
+fn syscall_render(
+    store: &mut WasmStore,
+    winst_id: WasmInstanceAddr,
+    args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let pixel_data = unsafe { args[0].num.i32 };
+    let pixel_width = unsafe { args[1].num.i32 };
+    let pixel_height = unsafe { args[2].num.i32 };
+    let len = pixel_width * pixel_height * 4;
+    let pixel_data = util::guest_resolve_slice(store, winst_id, pixel_data, len);
+    guest_gfx::render(pixel_data, pixel_width as u32);
+    return Box::new([]);
+}
+
+static SYSCALL_READ_KEY_TYPE: LazyLock<WasmFuncType> = LazyLock::new(|| WasmFuncType {
+    input_type: WasmResultType(Box::new([])),
+    output_type: WasmResultType(Box::new([
+        WasmValueType::Num(WasmNumType::I32), // read
+        WasmValueType::Num(WasmNumType::I32), // pressed
+        WasmValueType::Num(WasmNumType::I32), // keycode
+    ])),
+});
+
+fn syscall_read_key(
+    _store: &mut WasmStore,
+    _winst_id: WasmInstanceAddr,
+    _args: &[WasmValue],
+) -> Box<[WasmValue]> {
+    let mut read: i32 = 0;
+    let mut pressed: i32 = 0;
+    let mut keycode: i32 = 0;
+    if let Some(ev) = guest_input::dequeue_key() {
+        read = 1;
+        pressed = ev.pressed as i32;
+        keycode = ev.keycode.into_i32();
+    }
+    Box::new([
+        WasmValue {
+            num: WasmNumValue { i32: read },
+        },
+        WasmValue {
+            num: WasmNumValue { i32: pressed },
+        },
+        WasmValue {
+            num: WasmNumValue { i32: keycode },
+        },
+    ])
 }
 
 pub fn add_to_linker(linker: &mut WasmLinker) {
@@ -297,6 +388,14 @@ pub fn add_to_linker(linker: &mut WasmLinker) {
             ("fseek", &SYSCALL_FSEEK_TYPE, &syscall_fseek),
             ("fflush", &SYSCALL_FFLUSH_TYPE, &syscall_fflush),
             ("panic", &SYSCALL_PANIC_TYPE, &syscall_panic),
+            (
+                "get_ticks_ms",
+                &SYSCALL_GET_TICKS_MS_TYPE,
+                &syscall_get_ticks_ms,
+            ),
+            ("sleep_ms", &SYSCALL_SLEEP_MS_TYPE, &syscall_sleep_ms),
+            ("render", &SYSCALL_RENDER_TYPE, &syscall_render),
+            ("read_key", &SYSCALL_READ_KEY_TYPE, &syscall_read_key),
         ],
     );
 }
