@@ -488,10 +488,11 @@ void *realloc(void *ptr, size_t size) {
     size_t old_size = walloc_size(ptr);
     if (old_size == 0) return malloc(size);
     size_t min_size = old_size < size ? old_size : size;
-    void *ptr2 = malloc(size);
-    if (ptr2 == NULL) return NULL;
-    __builtin_memcpy(ptr2, ptr, min_size);
-    return ptr2;
+    void *new_ptr = malloc(size);
+    if (new_ptr == NULL) return NULL;
+    __builtin_memcpy(new_ptr, ptr, min_size);
+    free(ptr);
+    return new_ptr;
 }
 
 void *calloc(size_t num, size_t size) {
