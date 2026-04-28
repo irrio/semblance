@@ -44,3 +44,12 @@ impl From<WasmValidationError> for WasmFromBytesError {
         WasmFromBytesError::Validation(value)
     }
 }
+
+impl From<WasmFromBytesError> for WasmReadError {
+    fn from(value: WasmFromBytesError) -> Self {
+        match value {
+            WasmFromBytesError::Decode(e) => WasmReadError::Decode(e),
+            WasmFromBytesError::Validation(e) => WasmReadError::Validation(e),
+        }
+    }
+}

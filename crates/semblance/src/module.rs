@@ -19,11 +19,10 @@ impl repr::WasmModule {
             let meta = f.metadata()?;
             let mut buf = Vec::with_capacity(meta.len() as usize);
             f.read_to_end(&mut buf)?;
-            buf.into_boxed_slice()
+            buf
         };
-        let wmod = bin::decode(&bytes)?;
-        let valid = validate(wmod)?;
-        Ok(valid)
+        let wmod = WasmModule::from_bytes(&bytes)?;
+        Ok(wmod)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, WasmFromBytesError> {
