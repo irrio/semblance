@@ -1,8 +1,11 @@
+use std::{collections::HashMap, path::Path, rc::Rc};
+
 use crate::{
     inst::{WasmExternVal, WasmHostFunc, WasmStore, instantiate::WasmInstantiationError},
     module::{WasmFuncType, WasmModule},
 };
-use std::{collections::HashMap, path::Path, rc::Rc};
+
+use super::depgraph::WasmDependencyGraph;
 
 #[derive(Debug)]
 #[allow(dead_code)]
@@ -70,24 +73,24 @@ impl WasmLinker {
             for (modname, entry) in &self.modules {
                 match entry {
                     LinkerEntry::Wasm(module) => {
-                        depgraph.add_module_deps(modname.clone(), module);
+                        depgraph.add_module_deps(modname, module);
                     }
                     LinkerEntry::Host(_) => {
-                        depgraph.add_deps(modname.clone(), Box::new([]));
+                        depgraph.add_deps(modname, Box::new([]));
                     }
                 }
             }
-            depgraph.add_module_deps("".to_string(), wmod);
-            let mut order = depgraph.topological_sort("".to_string());
+            depgraph.add_module_deps("", wmod);
+            let mut order = depgraph.toposort("");
             order.pop();
             order
         };
         let mut env = HashMap::<(&str, &str), WasmExternVal>::new();
-        for modname in &order {
+        for modname in order {
             let entry = self
                 .modules
                 .get(modname)
-                .ok_or(WasmLinkError::UnknownModule(modname.clone()))?;
+                .ok_or_else(|| WasmLinkError::UnknownModule(modname.to_string()))?;
             match entry {
                 LinkerEntry::Host(hostmod) => {
                     for (name, (functype, func)) in &hostmod.funcs {
@@ -134,69 +137,5 @@ impl WasmLinker {
             );
         }
         Ok((store, externvals))
-    }
-}
-
-struct WasmDependencyGraph {
-    deps: HashMap<String, Box<[String]>>,
-}
-
-impl WasmDependencyGraph {
-    pub fn new() -> Self {
-        WasmDependencyGraph {
-            deps: HashMap::new(),
-        }
-    }
-
-    pub fn add_deps(&mut self, modname: String, deps: Box<[String]>) {
-        self.deps.insert(modname, deps);
-    }
-
-    pub fn add_module_deps(&mut self, modname: String, wmod: &WasmModule) {
-        let deps = wmod
-            .imports
-            .iter()
-            .map(|import| import.module_name.0.to_string())
-            .collect::<Vec<_>>();
-        self.add_deps(modname, deps.into_boxed_slice());
-    }
-
-    pub fn topological_sort(mut self, start: String) -> Vec<String> {
-        let mut stack: Vec<String> = vec![start];
-        let mut out = vec![];
-        while let Some(modname) = stack.pop() {
-            if let Some(deps) = self.deps.remove(&modname) {
-                stack.push(modname);
-                for dep in deps {
-                    if self.deps.contains_key(&dep) {
-                        stack.push(dep);
-                    }
-                }
-            } else {
-                out.push(modname);
-            }
-        }
-        out
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_topo_sort() {
-        let mut depgraph = WasmDependencyGraph::new();
-        depgraph.add_deps(
-            "a".to_string(),
-            Box::new(["b".to_string(), "c".to_string()]),
-        );
-        depgraph.add_deps("b".to_string(), Box::new(["c".to_string()]));
-        depgraph.add_deps("c".to_string(), Box::new([]));
-        let order = depgraph.topological_sort("a".to_string());
-        assert_eq!(
-            order,
-            vec!["c".to_string(), "b".to_string(), "a".to_string()]
-        );
     }
 }
