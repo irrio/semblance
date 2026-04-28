@@ -9,8 +9,8 @@ use std::{
 
 use semblance::{
     inst::{
-        DynamicWasmResult, WasmInvokeOptions, WasmNumValue, WasmResult, WasmStore, WasmTrap,
-        WasmValue, instantiate::WasmInstantiationError, table::WasmInstanceAddr,
+        DynamicWasmResult, WasmInvokeOptions, WasmNumValue, WasmStore, WasmTrap, WasmValue,
+        instantiate::WasmInstantiationError, table::WasmInstanceAddr,
     },
     link::{WasmLinkError, WasmLinker, infer_module_name_from_path},
     module::{
@@ -26,10 +26,6 @@ Options:
     -h, --help                      Print this help text
     -I, --invoke <FN> [ARGS...]     Invoke an exported function
     -L, --link <MODULE>[ as ALIAS]  Load an additional module to be processed by the linker
-    --assert-return [VALUES...]     Assert that the invoked function returns a specific set of values
-    --assert-trap [MESSAGE]         Assert that the invoked function traps
-    --assert-invalid                Assert that the module does not pass validation
-    --assert-malformed              Assert that the module cannot be decoded
 ";
 
 #[derive(Debug)]
@@ -37,15 +33,6 @@ struct CliArgs {
     pub module_path: PathBuf,
     pub link: Vec<LinkArgs>,
     pub invoke: Option<InvokeArgs>,
-    pub assert: Option<Assertion>,
-}
-
-#[derive(Debug)]
-enum Assertion {
-    Return(Vec<String>),
-    Trap(Option<String>),
-    Invalid,
-    Malformed,
 }
 
 #[derive(Debug)]
@@ -67,10 +54,6 @@ enum CliFlag<'s> {
     Help,
     Noop,
     Unknown(&'s str),
-    AssertReturn(Vec<String>),
-    AssertTrap(Option<String>),
-    AssertInvalid,
-    AssertMalformed,
 }
 
 fn parse_flag<'a>(argv: &'a [&'a str]) -> (CliFlag<'a>, &'a [&'a str]) {
@@ -87,16 +70,6 @@ fn parse_flag<'a>(argv: &'a [&'a str]) -> (CliFlag<'a>, &'a [&'a str]) {
             let (link_args, rest) = parse_link_args(rest);
             (CliFlag::Link(link_args), rest)
         }
-        ["--assert-return", rest @ ..] => {
-            let (vals, rest) = parse_assert_return_vals(rest);
-            (CliFlag::AssertReturn(vals), rest)
-        }
-        ["--assert-trap", rest @ ..] => {
-            let (message, rest) = parse_assert_trap_message(rest);
-            (CliFlag::AssertTrap(message), rest)
-        }
-        ["--assert-invalid", rest @ ..] => (CliFlag::AssertInvalid, rest),
-        ["--assert-malformed", rest @ ..] => (CliFlag::AssertMalformed, rest),
         [s, rest @ ..] if s.starts_with("-") => (CliFlag::Unknown(s), rest),
         [s, rest @ ..] => (CliFlag::Module(PathBuf::from(s)), rest),
         _ => unreachable!("argv is not empty"),
@@ -143,26 +116,6 @@ fn parse_link_alias<'a>(argv: &'a [&'a str]) -> (Option<String>, &'a [&'a str]) 
     }
 }
 
-fn parse_assert_return_vals<'a>(argv: &'a [&'a str]) -> (Vec<String>, &'a [&'a str]) {
-    let idx = argv.iter().take_while(|s| !is_flag(s)).count();
-    let vals = argv[0..idx]
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>();
-    let rest = &argv[idx..];
-    (vals, rest)
-}
-
-fn parse_assert_trap_message<'a>(argv: &'a [&'a str]) -> (Option<String>, &'a [&'a str]) {
-    if let Some(s) = argv.get(0)
-        && is_flag(s)
-    {
-        (Some(s.to_string()), &argv[1..])
-    } else {
-        (None, argv)
-    }
-}
-
 fn is_flag(s: &str) -> bool {
     s.chars().nth(0) == Some('-')
         && if let Some(c) = s.chars().nth(1) {
@@ -182,7 +135,6 @@ impl CliArgs {
         let mut module_path = None;
         let mut link = vec![];
         let mut invoke = None;
-        let mut assert = None;
 
         let argv = std::env::args().collect::<Vec<_>>();
         let strs = argv.iter().map(|s| s.as_str()).collect::<Vec<_>>();
@@ -209,10 +161,6 @@ impl CliArgs {
                         exit();
                     }
                 }
-                CliFlag::AssertReturn(vals) => assert = Some(Assertion::Return(vals)),
-                CliFlag::AssertTrap(message) => assert = Some(Assertion::Trap(message)),
-                CliFlag::AssertMalformed => assert = Some(Assertion::Malformed),
-                CliFlag::AssertInvalid => assert = Some(Assertion::Invalid),
                 CliFlag::Module(m) => module_path = Some(m),
                 CliFlag::Unknown(f) => {
                     eprintln!("unknown flag: {}", f);
@@ -232,7 +180,6 @@ impl CliArgs {
                 module_path,
                 link,
                 invoke,
-                assert,
             }
         } else {
             eprintln!("<MODULE> is required");
@@ -395,10 +342,6 @@ fn main() {
     let args = CliArgs::parse_or_exit();
     let wres = run(&args);
 
-    if let Some(ref assertion) = args.assert {
-        return apply_assertion(wres, &assertion);
-    }
-
     match wres {
         Ok(v) => {
             if !v.ty.is_empty() {
@@ -407,79 +350,6 @@ fn main() {
         }
         Err(e) => {
             eprintln!("{:?}", e);
-            std::process::exit(1);
-        }
-    }
-}
-
-fn apply_assertion(wres: SemblanceResult, assertion: &Assertion) {
-    match assertion {
-        Assertion::Invalid => assert_invalid(wres),
-        Assertion::Malformed => assert_malformed(wres),
-        Assertion::Return(vals) => assert_return(wres, vals),
-        Assertion::Trap(message) => assert_trap(wres, message),
-    }
-}
-
-fn assert_invalid(wres: SemblanceResult) {
-    match wres {
-        Err(SemblanceError::Read(WasmReadError::Validation(_))) => {
-            eprintln!("--assert-invalid passed");
-        }
-        _ => {
-            eprintln!("--assert-invalid failed");
-            eprintln!("expected an invalid module, got: ${:?}", wres);
-            std::process::exit(1);
-        }
-    }
-}
-
-fn assert_malformed(wres: SemblanceResult) {
-    match wres {
-        Err(SemblanceError::Read(WasmReadError::Decode(_))) => {
-            eprintln!("--assert-malformed passed");
-        }
-        _ => {
-            eprintln!("--assert-malformed failed");
-            eprintln!("expected a malformed module, got: ${:?}", wres);
-            std::process::exit(1);
-        }
-    }
-}
-
-fn assert_return(wres: SemblanceResult, vals: &[String]) {
-    match wres {
-        Ok(v) => {
-            let assert_vals =
-                parse_args_for_value_type(&v.ty, vals).expect("failed to parse assert vals");
-            let assert_dyn = DynamicWasmResult {
-                ty: v.ty.clone(),
-                res: WasmResult(assert_vals.into_vec()),
-            };
-            if assert_dyn == v {
-                eprintln!("--assert-return passed");
-            } else {
-                eprintln!("--assert-return failed",);
-                eprintln!("expected {} but got {}", assert_dyn, v);
-                std::process::exit(1);
-            }
-        }
-        _ => {
-            eprintln!("--assert-return failed");
-            eprintln!("expected return value but got {:?}", wres);
-            std::process::exit(1);
-        }
-    }
-}
-
-fn assert_trap(wres: SemblanceResult, _message: &Option<String>) {
-    match wres {
-        Err(SemblanceError::Trap(_t)) => {
-            eprintln!("--assert-trap passed");
-        }
-        _ => {
-            eprintln!("--assert-trap failed");
-            eprintln!("expected trap but got {:?}", wres);
             std::process::exit(1);
         }
     }
