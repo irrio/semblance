@@ -2,43 +2,30 @@ mod bin;
 mod builder;
 #[macro_use]
 mod repr;
+mod err;
 mod valid;
 
-use std::{
-    fs::File,
-    io::{self, Read},
-    path::Path,
-};
+use std::{fs::File, io::Read, path::Path};
 
 pub use bin::{WasmDecodeError, WasmDecodeResult};
+pub use err::{WasmFromBytesError, WasmReadError};
 pub use repr::*;
 pub use valid::{WasmValidationError, WasmValidationResult, validate};
 
-#[derive(Debug)]
-pub enum WasmReadError {
-    Io(io::Error),
-    Decode(WasmDecodeError),
-    Validation(WasmValidationError),
-}
-
-#[derive(Debug)]
-pub enum WasmFromBytesError {
-    Decode(WasmDecodeError),
-    Validation(WasmValidationError),
-}
-
 impl repr::WasmModule {
     pub fn read(path: &Path) -> Result<Self, WasmReadError> {
-        let mut f = File::open(path).map_err(WasmReadError::Io)?;
+        let mut f = File::open(path)?;
         let mut buf = Vec::new();
-        f.read_to_end(&mut buf).map_err(WasmReadError::Io)?;
+        f.read_to_end(&mut buf)?;
         let bytes = buf.into_boxed_slice();
-        let wmod = bin::decode(&bytes).map_err(WasmReadError::Decode)?;
-        validate(wmod).map_err(WasmReadError::Validation)
+        let wmod = bin::decode(&bytes)?;
+        let valid = validate(wmod)?;
+        Ok(valid)
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self, WasmFromBytesError> {
-        let wmod = bin::decode(&bytes).map_err(WasmFromBytesError::Decode)?;
-        validate(wmod).map_err(WasmFromBytesError::Validation)
+        let wmod = bin::decode(&bytes)?;
+        let valid = validate(wmod)?;
+        Ok(valid)
     }
 }
