@@ -23,7 +23,7 @@ pub struct WasmFrame {
     pub winst_id: WasmInstanceAddr,
 }
 
-struct WasmValueStack(Vec<WasmValue>);
+pub struct WasmValueStack(Vec<WasmValue>);
 
 impl WasmValueStack {
     pub fn new() -> Self {
@@ -46,6 +46,10 @@ impl WasmStack {
             control_stack: Vec::new(),
             max_control_stack_depth,
         }
+    }
+
+    pub fn value_stack_mut(&mut self) -> &mut WasmValueStack {
+        &mut self.value_stack
     }
 
     pub fn push_value<V: Into<WasmValue>>(&mut self, val: V) {

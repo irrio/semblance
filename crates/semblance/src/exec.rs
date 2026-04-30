@@ -49,7 +49,7 @@ macro_rules! invoke {
                 hostfunc.call(
                     &args,
                     &mut WasmHostCallContext {
-                        stack: $stack,
+                        stack: $stack.value_stack_mut(),
                         store: $store,
                         inst: $winst_id,
                     },
