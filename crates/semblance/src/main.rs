@@ -9,8 +9,8 @@ use std::{
 
 use semblance::{
     inst::{
-        DynamicWasmResult, WasmInvokeOptions, WasmNumValue, WasmStore, WasmTrap, WasmValue,
-        instantiate::WasmInstantiationError, table::WasmInstanceAddr,
+        DynamicWasmResult, WasmInstanceAddr, WasmInstantiationError, WasmInvokeOptions,
+        WasmNumValue, WasmStore, WasmTrap, WasmValue,
     },
     link::{WasmLinkError, WasmLinker, infer_module_name_from_path},
     module::{

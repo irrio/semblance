@@ -6,13 +6,13 @@ use crate::{
     module::{
         WasmData, WasmDataIdx, WasmDataMode, WasmElemIdx, WasmElemMode, WasmExportDesc, WasmExpr,
         WasmFunc, WasmFuncType, WasmGlobalType, WasmImportDesc, WasmInstructionRepr, WasmLimits,
-        WasmMemType, WasmRefType, WasmTableType,
+        WasmMemType, WasmModule, WasmRefType, WasmTableType,
     },
 };
 
 use super::{
     ModuleRef, WasmDataInst, WasmElemInst, WasmExternVal, WasmFrame, WasmFuncImpl, WasmFuncInst,
-    WasmGlobalInst, WasmMemInst, WasmModule, WasmModuleInst, WasmStore, WasmTableInst, WasmValue,
+    WasmGlobalInst, WasmMemInst, WasmModuleInst, WasmStore, WasmTableInst, WasmValue,
     table::{
         WasmDataAddr, WasmElemAddr, WasmFuncAddr, WasmGlobalAddr, WasmInstanceAddr, WasmMemAddr,
         WasmTableAddr,

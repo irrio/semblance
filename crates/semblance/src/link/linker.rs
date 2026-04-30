@@ -1,7 +1,7 @@
 use std::{collections::HashMap, path::Path, rc::Rc};
 
 use crate::{
-    inst::{WasmExternVal, WasmHostFunc, WasmStore, instantiate::WasmInstantiationError},
+    inst::{WasmExternVal, WasmHostFunc, WasmInstantiationError, WasmStore},
     module::{WasmFuncType, WasmModule},
 };
 

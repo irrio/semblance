@@ -1,7 +1,7 @@
 use std::{f64, sync::LazyLock};
 
 use semblance::{
-    inst::{WasmNumValue, WasmStore, WasmValue, table::WasmInstanceAddr},
+    inst::{WasmInstanceAddr, WasmNumValue, WasmStore, WasmValue},
     link::WasmLinker,
     module::{WasmFuncType, WasmNumType, WasmResultType, WasmValueType},
 };

@@ -1,7 +1,7 @@
 use crate::{
     inst::{
-        ControlStackEntry, WasmFrame, WasmFuncImpl, WasmLabel, WasmMemInst, WasmRefValue,
-        WasmStack, WasmStore, WasmTrap, WasmValue,
+        ControlStackEntry, WasmFrame, WasmFuncImpl, WasmHostCallContext, WasmLabel, WasmMemInst,
+        WasmRefValue, WasmStack, WasmStore, WasmTrap, WasmValue,
     },
     module::{WasmExpr, WasmInstruction, WasmInstructionRepr, WasmLabelIdx, WasmMemIdx},
 };
@@ -46,10 +46,14 @@ macro_rules! invoke {
         let args = $stack.pop_values($f.type_.input_type.0.len());
         match $f.impl_ {
             WasmFuncImpl::Host { hostfunc } => {
-                let ret = hostfunc($store, $winst_id, &args);
-                for val in ret {
-                    $stack.push_value(val);
-                }
+                hostfunc.call(
+                    &args,
+                    &mut WasmHostCallContext {
+                        stack: $stack,
+                        store: $store,
+                        inst: $winst_id,
+                    },
+                );
             }
             WasmFuncImpl::Wasm {
                 winst_id,

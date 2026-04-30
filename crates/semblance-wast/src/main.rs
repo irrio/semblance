@@ -1,8 +1,7 @@
-use semblance::inst::instantiate::{WasmInstantiationError, WasmInstantiationResult};
-use semblance::inst::table::WasmInstanceAddr;
 use semblance::inst::{
-    DynamicWasmResult, WasmExternAddr, WasmExternVal, WasmInvokeOptions, WasmMemInst, WasmNumValue,
-    WasmRefValue, WasmResult, WasmStore, WasmTrap, WasmValue,
+    DynamicWasmResult, WasmExternAddr, WasmExternVal, WasmInstanceAddr, WasmInstantiationError,
+    WasmInstantiationResult, WasmInvokeOptions, WasmMemInst, WasmNumValue, WasmRefValue,
+    WasmResult, WasmStore, WasmTrap, WasmValue,
 };
 use semblance::module::{
     WasmFromBytesError, WasmFuncType, WasmGlobalMutability, WasmGlobalType, WasmLimits,
